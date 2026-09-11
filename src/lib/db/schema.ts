@@ -177,3 +177,34 @@ export const orgControls = pgTable("org_controls", {
 }, (table) => ({
   dedupeIdx: uniqueIndex("org_controls_dedupe_idx").on(table.orgId, table.controlId),
 }));
+
+// Actual evidence FILES (not just a text note) for audit purposes — added
+// after Ariel flagged that §5.2/§5.4's "evidence attachment/upload" wasn't
+// really satisfied by a free-text notes field. Stored in Vercel Blob (per
+// PRD §6's original architecture note); this table is just the metadata +
+// pointer. Deliberately append-only / no delete action exposed in the UI —
+// same audit-trail philosophy as org_obligations and org_profiles: an
+// auditor needs to see everything that was ever uploaded, not just the
+// current state. Exactly one of obligationId/controlId should be set; this
+// isn't a DB-level CHECK constraint (kept simple given the current Drizzle
+// Kit version in use), just an application-level rule enforced in
+// evidence/actions.ts — flagging so a future direct-DB write doesn't violate
+// it silently.
+//
+// controlId points at controls_library.id, NOT org_controls.id: an
+// org_controls row is only created lazily on first status save (see
+// updateControlStatus in controls/actions.ts), but you should be able to
+// attach evidence to a control before ever touching its status. orgId still
+// scopes the row to a tenant.
+export const evidenceFiles = pgTable("evidence_files", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  obligationId: uuid("obligation_id").references(() => orgObligations.id, { onDelete: "cascade" }),
+  controlId: uuid("control_id").references(() => controlsLibrary.id),
+  fileName: text("file_name").notNull(),
+  blobUrl: text("blob_url").notNull(),
+  contentType: text("content_type").notNull().default("application/octet-stream"),
+  sizeBytes: integer("size_bytes").notNull().default(0),
+  uploadedBy: uuid("uploaded_by").notNull().references(() => users.id),
+  uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
+});

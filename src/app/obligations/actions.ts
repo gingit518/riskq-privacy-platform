@@ -22,6 +22,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { orgObligations, orgRegulationScope, regulationSets } from "@/lib/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { uploadEvidence } from "@/lib/evidence";
 import type { RegulationMetadata } from "@/lib/regulations/types";
 
 export interface ScopeRegSummary {
@@ -127,6 +128,29 @@ export async function updateObligation(formData: FormData): Promise<void> {
     // (PRD Appendix A known gap) — application-layer isolation still applies
     // to every write, not just reads.
     .where(and(eq(orgObligations.id, id), eq(orgObligations.orgId, session.orgId)));
+
+  revalidatePath("/obligations");
+}
+
+/** Uploads an evidence file for one obligation row (PRD §5.2 "evidence
+ * attachment"). Throws on failure (missing Blob token, oversized file,
+ * nothing selected) — there is no error-message UI wired up yet for this
+ * form specifically, so a failure surfaces as Next's generic error page
+ * rather than an inline message. Known gap, not silently swallowed. */
+export async function uploadObligationEvidence(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  if (!session) return;
+
+  const obligationId = String(formData.get("obligationId") || "");
+  const file = formData.get("file");
+  if (!obligationId || !(file instanceof File)) return;
+
+  await uploadEvidence({
+    orgId: session.orgId,
+    uploadedBy: session.userId,
+    obligationId,
+    file,
+  });
 
   revalidatePath("/obligations");
 }

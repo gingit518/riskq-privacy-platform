@@ -9,6 +9,7 @@ import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { controlsLibrary, orgControls } from "@/lib/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { uploadEvidence } from "@/lib/evidence";
 import { CONTROLS } from "@/lib/controls/data";
 
 /** Self-seeding, same pattern as regulation_sets in profile/actions.ts — no
@@ -63,6 +64,29 @@ export async function updateControlStatus(formData: FormData): Promise<void> {
         updatedAt: new Date(),
       },
     });
+
+  revalidatePath("/controls");
+}
+
+/** Uploads an evidence file for one control (PRD §5.4 "evidence upload").
+ * `controlId` here is controls_library.id (see schema.ts comment on
+ * evidenceFiles) — works even if this org has never saved a status for this
+ * control yet. Same known gap as obligations: failures surface as Next's
+ * generic error page, no inline message yet. */
+export async function uploadControlEvidence(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  if (!session) return;
+
+  const controlId = String(formData.get("controlId") || "");
+  const file = formData.get("file");
+  if (!controlId || !(file instanceof File)) return;
+
+  await uploadEvidence({
+    orgId: session.orgId,
+    uploadedBy: session.userId,
+    controlId,
+    file,
+  });
 
   revalidatePath("/controls");
 }

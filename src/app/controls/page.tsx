@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
+import { Fragment } from "react";
 import { asc, eq, and } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { controlsLibrary, orgControls } from "@/lib/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import Nav from "@/components/Nav";
-import { ensureControlsSeeded, updateControlStatus } from "./actions";
+import { listEvidenceForControls } from "@/lib/evidence";
+import { ensureControlsSeeded, updateControlStatus, uploadControlEvidence } from "./actions";
 
 const STATUS_OPTIONS = ["not_implemented", "partial", "implemented"] as const;
 
@@ -40,6 +42,17 @@ export default async function ControlsPage() {
     const fn = row.controls_library.function;
     if (!byFunction.has(fn)) byFunction.set(fn, []);
     byFunction.get(fn)!.push(row);
+  }
+
+  const evidenceRows = await listEvidenceForControls(
+    session.orgId,
+    rows.map((r) => r.controls_library.id)
+  );
+  const evidenceByControl = new Map<string, typeof evidenceRows>();
+  for (const e of evidenceRows) {
+    if (!e.controlId) continue;
+    if (!evidenceByControl.has(e.controlId)) evidenceByControl.set(e.controlId, []);
+    evidenceByControl.get(e.controlId)!.push(e);
   }
 
   return (
@@ -78,8 +91,10 @@ export default async function ControlsPage() {
                 {items.map((row) => {
                   const lib = row.controls_library;
                   const org = row.org_controls;
+                  const files = evidenceByControl.get(lib.id) ?? [];
                   return (
-                    <tr key={lib.id} style={{ borderBottom: "1px solid #eee" }}>
+                    <Fragment key={lib.id}>
+                    <tr style={{ borderBottom: "1px solid #eee" }}>
                       <td style={{ padding: 4, verticalAlign: "top", maxWidth: 280 }}>
                         <strong>{lib.code}</strong> — {lib.category}
                         <div style={{ color: "#666", fontSize: 12 }}>{lib.description}</div>
@@ -115,6 +130,36 @@ export default async function ControlsPage() {
                         </form>
                       </td>
                     </tr>
+                    <tr style={{ borderBottom: "1px solid #eee" }}>
+                      <td></td>
+                      <td colSpan={4} style={{ padding: "0 4px 8px", fontSize: 12 }}>
+                        {files.length > 0 && (
+                          <ul style={{ margin: "0 0 4px", paddingLeft: 16 }}>
+                            {files.map((f) => (
+                              <li key={f.id}>
+                                <a href={f.blobUrl} target="_blank" rel="noreferrer">
+                                  {f.fileName}
+                                </a>{" "}
+                                <span style={{ color: "#666" }}>
+                                  — {(f.sizeBytes / 1024).toFixed(0)}KB, uploaded{" "}
+                                  {new Date(f.uploadedAt as unknown as string).toLocaleDateString()}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <form
+                          action={uploadControlEvidence}
+                          encType="multipart/form-data"
+                          style={{ display: "flex", gap: 8, alignItems: "center" }}
+                        >
+                          <input type="hidden" name="controlId" value={lib.id} />
+                          <input type="file" name="file" required />
+                          <button type="submit">Attach evidence</button>
+                        </form>
+                      </td>
+                    </tr>
+                    </Fragment>
                   );
                 })}
               </tbody>

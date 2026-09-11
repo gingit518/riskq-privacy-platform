@@ -1,13 +1,16 @@
 import { redirect } from "next/navigation";
+import { Fragment } from "react";
 import Link from "next/link";
 import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { orgObligations } from "@/lib/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import Nav from "@/components/Nav";
+import { listEvidenceForObligations } from "@/lib/evidence";
 import {
   syncObligationsFromScope,
   updateObligation,
+  uploadObligationEvidence,
   getCurrentInScopeAcronyms,
 } from "./actions";
 
@@ -34,6 +37,16 @@ export default async function ObligationsPage() {
     .orderBy(asc(orgObligations.regulationAcronym), asc(orgObligations.createdAt));
 
   const inScopeAcronyms = await getCurrentInScopeAcronyms(session.orgId);
+  const evidenceRows = await listEvidenceForObligations(
+    session.orgId,
+    rows.map((r) => r.id)
+  );
+  const evidenceByObligation = new Map<string, typeof evidenceRows>();
+  for (const e of evidenceRows) {
+    if (!e.obligationId) continue;
+    if (!evidenceByObligation.has(e.obligationId)) evidenceByObligation.set(e.obligationId, []);
+    evidenceByObligation.get(e.obligationId)!.push(e);
+  }
 
   if (rows.length === 0) {
     return (
@@ -93,8 +106,11 @@ export default async function ObligationsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((row) => (
-                    <tr key={row.id} style={{ borderBottom: "1px solid #eee" }}>
+                  {items.map((row) => {
+                    const files = evidenceByObligation.get(row.id) ?? [];
+                    return (
+                    <Fragment key={row.id}>
+                    <tr style={{ borderBottom: "1px solid #eee" }}>
                       <td style={{ padding: 4, verticalAlign: "top", maxWidth: 260 }}>
                         {row.obligationText}
                       </td>
@@ -129,7 +145,38 @@ export default async function ObligationsPage() {
                         </form>
                       </td>
                     </tr>
-                  ))}
+                    <tr style={{ borderBottom: "1px solid #eee" }}>
+                      <td></td>
+                      <td colSpan={4} style={{ padding: "0 4px 8px", fontSize: 12 }}>
+                        {files.length > 0 && (
+                          <ul style={{ margin: "0 0 4px", paddingLeft: 16 }}>
+                            {files.map((f) => (
+                              <li key={f.id}>
+                                <a href={f.blobUrl} target="_blank" rel="noreferrer">
+                                  {f.fileName}
+                                </a>{" "}
+                                <span style={{ color: "#666" }}>
+                                  — {(f.sizeBytes / 1024).toFixed(0)}KB, uploaded{" "}
+                                  {new Date(f.uploadedAt as unknown as string).toLocaleDateString()}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <form
+                          action={uploadObligationEvidence}
+                          encType="multipart/form-data"
+                          style={{ display: "flex", gap: 8, alignItems: "center" }}
+                        >
+                          <input type="hidden" name="obligationId" value={row.id} />
+                          <input type="file" name="file" required />
+                          <button type="submit">Attach evidence</button>
+                        </form>
+                      </td>
+                    </tr>
+                    </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </section>

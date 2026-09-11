@@ -52,6 +52,13 @@ what's needed to run and extend this codebase.
 - Shared nav (`src/components/Nav.tsx`) across Profile/Regulations/
   Obligations/Cyber Controls, plus a working logout link — Phase 1 shipped
   `/api/auth/logout` but nothing in the UI linked to it.
+- **Evidence file uploads** (`evidence_files`, `src/lib/evidence.ts`) — added
+  after Ariel flagged that a free-text "evidence" note doesn't satisfy
+  §5.2/§5.4's actual ask ("evidence attachment"/"evidence upload"). Both
+  Obligations and Cyber Controls rows now have a real file picker; uploads go
+  to Vercel Blob (per PRD §6) and the row shows a download link, uploaded-by
+  date, and size. Append-only — no delete button in the UI, same audit-trail
+  philosophy as the rest of this schema. Needs its own setup step, see below.
 
 ## What's NOT built yet
 
@@ -84,6 +91,12 @@ later phases per the PRD roadmap (§8).
    `/profile` scoring flow and the `/controls` page both self-seed their
    respective content on first use — but running it explicitly after a
    content change is still good practice.
+5. **`BLOB_READ_WRITE_TOKEN`** — required for evidence uploads on
+   `/obligations` and `/controls` (nothing else uses it). Vercel → Storage →
+   Create Database → Blob → connect it to this project, same flow as the
+   Neon Postgres setup above; the token auto-injects once connected. Without
+   it, evidence upload throws a clear error naming this step — it doesn't
+   fail silently, and nothing else in the app depends on it.
 
 Copy `.env.example` to `.env.local` for local dev.
 
@@ -132,6 +145,22 @@ Copy `.env.example` to `.env.local` for local dev.
   provenance/review status as the regulation library itself, PRD §9 item 3),
   but there's no link back to the actual statute section it derives from.
   Worth adding once the legal review pass happens.
+- **New finding, not yet fixed: `drizzle-orm@0.33.0` has a high-severity SQL
+  injection advisory** (GHSA-gpj5-g38j-94v9, fixed in 0.45.2) — surfaced by
+  `npm audit` while adding `@vercel/blob` this session. Not fixed here: the
+  jump from 0.33.0 to 0.45.2 spans many 0.x releases, each of which can carry
+  breaking API changes under semver's pre-1.0 convention, and this scaffold
+  has no automated test suite to validate the upgrade against — the same
+  "flag honestly, don't silently patch or silently ignore" treatment as the
+  Next.js 14.2.35 residual CVEs below. Needs its own dedicated upgrade-and-
+  retest pass, not a same-commit bump alongside a feature change.
+- **No error-message UI for evidence upload failures.** `uploadEvidence()` in
+  `src/lib/evidence.ts` throws a clear message on a missing Blob token, an
+  empty file, or an oversized file (>8MB) — but the two upload forms
+  (`uploadObligationEvidence`, `uploadControlEvidence`) don't catch it, so a
+  failure currently surfaces as Next's generic error page rather than an
+  inline message next to the file picker. Low-effort follow-on, same shape
+  as the earlier signup error-masking fix.
 
 ## Local development
 
