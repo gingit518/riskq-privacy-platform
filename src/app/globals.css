@@ -1,0 +1,30 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: #1a1a1a;
+  background: #fafafa;
+}
+
+input,
+select,
+button {
+  font: inherit;
+  padding: 6px 8px;
+}
+
+button {
+  cursor: pointer;
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+a {
+  color: #0b5fff;
+}

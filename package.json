@@ -1,0 +1,41 @@
+{
+  "name": "riskq-privacy-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RiskQ Privacy Compliance Platform — multi-tenant regulatory scoping, business obligations, DSAR, and cyber controls (Phase 1 scaffold).",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:seed": "tsx scripts/seed-regulations.ts"
+  },
+  "dependencies": {
+    "next": "14.2.35",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "drizzle-orm": "0.33.0",
+    "postgres": "3.4.4",
+    "bcryptjs": "2.4.3",
+    "jose": "5.9.4",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "5.6.3",
+    "@types/node": "20.16.11",
+    "@types/react": "18.3.11",
+    "@types/react-dom": "18.3.1",
+    "@types/bcryptjs": "2.4.6",
+    "drizzle-kit": "0.24.2",
+    "tsx": "4.19.1"
+  },
+  "overrides": {
+    "postcss": "8.5.28"
+  },
+  "engines": {
+    "node": ">=18.18"
+  }
+}
