@@ -4,6 +4,7 @@ import { desc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { orgRegulationScope } from "@/lib/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import Nav from "@/components/Nav";
 
 interface ScopedTest {
   label: string;
@@ -35,6 +36,8 @@ export default async function ScopePage() {
 
   if (!latest) {
     return (
+      <>
+      <Nav />
       <main style={{ maxWidth: 720, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
         <h1>Applicable regulations</h1>
         <p>
@@ -42,6 +45,7 @@ export default async function ScopePage() {
           compute scope.
         </p>
       </main>
+      </>
     );
   }
 
@@ -51,6 +55,8 @@ export default async function ScopePage() {
   const outOfScope = results.filter((r) => !r.inScope && !r.watch);
 
   return (
+    <>
+    <Nav />
     <main style={{ maxWidth: 900, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
       <h1>Applicable regulations</h1>
       <p>
@@ -82,8 +88,11 @@ export default async function ScopePage() {
       <p style={{ color: "#666" }}>{outOfScope.map((r) => r.acronym).join(", ") || "—"}</p>
 
       <p style={{ marginTop: 32 }}>
-        <Link href="/profile">Update profile &amp; re-analyze</Link>
+        <Link href="/profile">Update profile &amp; re-analyze</Link> ·{" "}
+        <Link href="/obligations">View business obligations</Link> ·{" "}
+        <Link href="/controls">View cyber controls</Link>
       </p>
     </main>
+    </>
   );
 }

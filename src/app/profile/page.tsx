@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import type { CSSProperties } from "react";
 import { requireSession } from "@/lib/auth/session";
+import Nav from "@/components/Nav";
 import { saveProfileAndAnalyze } from "./actions";
 import {
   INDUSTRY_OPTIONS,
@@ -19,6 +20,8 @@ export default async function ProfilePage() {
   if (!session) redirect("/login");
 
   return (
+    <>
+    <Nav />
     <main style={{ maxWidth: 720, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
       <h1>Company profile</h1>
       <p>
@@ -121,5 +124,6 @@ export default async function ProfilePage() {
         <button type="submit">Save &amp; analyze scope</button>
       </form>
     </main>
+    </>
   );
 }

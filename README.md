@@ -1,9 +1,10 @@
-# RiskQ Privacy Compliance Platform — Phase 1 scaffold
+# RiskQ Privacy Compliance Platform — Phase 1 + 2 scaffold
 
 Multi-tenant SaaS privacy compliance platform. Phase 1 = Regulatory
-Management only: the module every other module (Business Obligations, DSAR,
+Management, the module every other module (Business Obligations, DSAR,
 Cyber Controls, Assessments, International Transfers, Tracking Technologies)
-derives scope from. See the PRD (`PRD-Privacy-Application.md` in the Privacy
+derives scope from. Phase 2 = Business Obligations + Cyber Controls, wired to
+that scope. See the PRD (`PRD-Privacy-Application.md` in the Privacy
 Development project) for the full product spec — this README covers only
 what's needed to run and extend this codebase.
 
@@ -23,14 +24,42 @@ what's needed to run and extend this codebase.
   to scoring), `/scope` (the computed Applicable Regulations list, versioned
   per profile snapshot).
 
+## What's built (Phase 2)
+
+- **Business Obligations** (`org_obligations`, `src/app/obligations/`) — one
+  row per obligation per in-scope regulation, synced from the `obls` field
+  already present on each ported REGS entry via the versioned
+  `regulation_sets` metadata snapshot (not live `data.ts`), so obligation
+  text stays tied to what was actually in scope at that point in time. Sync
+  is additive-only: re-running it never resets an existing row's status,
+  owner, due date, or notes, and a regulation falling out of scope on a later
+  re-analysis does not delete its obligation rows (audit trail, per PRD
+  §5.2) — the page flags "no longer in current scope" instead.
+- **Cyber Controls** (`controls_library` + `org_controls`,
+  `src/app/controls/`) — a global, self-seeding control library (same
+  self-seed-on-first-use pattern as `regulation_sets`) plus per-org
+  implementation status/evidence/last-tested tracking. **Important caveat**:
+  the seeded library is NIST CSF 2.0's public Function/Category taxonomy (6
+  Functions, 22 Categories) with a `regulationGroupsTag` I added by hand as
+  an indicative, non-legally-reviewed guess at relevance — not a verified
+  control-to-regulation compliance mapping. See
+  `src/lib/controls/types.ts`/`data.ts` for the full caveat. ISO/IEC 27001,
+  CIS Controls, and NIST SP 800-53 (all named in PRD §5.4) are **not yet
+  seeded** — those either carry licensing/reproduction restrictions (ISO,
+  CIS) or need sourcing from an authoritative free text (800-53) rather than
+  being authored from memory, which is exactly the unverified-content risk
+  this PRD flags for the regulation library itself (§9 item 3).
+- Shared nav (`src/components/Nav.tsx`) across Profile/Regulations/
+  Obligations/Cyber Controls, plus a working logout link — Phase 1 shipped
+  `/api/auth/logout` but nothing in the UI linked to it.
+
 ## What's NOT built yet
 
-Everything downstream of Regulatory Management: Business Obligations, DSAR
-tracking, Cyber Controls, Assessments (DPIA/PIA, readiness/maturity, RoPA —
-**not** vendor/TPRM, which is explicitly out of scope for this product per
-Ariel's instruction), International Transfers, Tracking Technologies/CMP
-(scoped in PRD §5.9), and Automated DSAR fulfillment (scoped in PRD §5.10).
-Those are later phases per the PRD roadmap.
+DSAR tracking, Assessments (DPIA/PIA, readiness/maturity, RoPA — **not**
+vendor/TPRM, which is explicitly out of scope for this product per Ariel's
+instruction), International Transfers, Tracking Technologies/CMP (scoped in
+PRD §5.9), and Automated DSAR fulfillment (scoped in PRD §5.10). Those are
+later phases per the PRD roadmap (§8).
 
 ## Setup required before this deploys
 
@@ -40,10 +69,21 @@ Those are later phases per the PRD roadmap.
 2. **`AUTH_SECRET`** — any long random string (`openssl rand -base64 32`).
    Used to sign session JWTs. Rotating it invalidates all sessions.
 3. Run migrations: `npm run db:generate` (generates SQL from `schema.ts` into
-   `./drizzle`, commit the output) then `npm run db:migrate` (applies it).
+   `./drizzle`, commit the output) then `npm run db:migrate` (applies it) —
+   or, if you don't have `DATABASE_URL` reachable from wherever you're
+   running commands (e.g. a Neon DB only reachable from Vercel's network),
+   paste the SQL file(s) under `./drizzle/*.sql` directly into your Postgres
+   provider's SQL console, in filename order (`0000_...` then `0001_...`,
+   etc.). **This step does not run automatically when you provision a new
+   database** — see the Phase 1 build-log incident in the PRD Appendix A for
+   what happens if you skip it (every write 500s with `relation "x" does not
+   exist`).
 4. Seed the regulation content snapshot: `npm run db:seed`. Re-run this any
    time `src/lib/regulations/data.ts` changes — it's idempotent (content-hash
-   versioned, see `regulations/metadata.ts`).
+   versioned, see `regulations/metadata.ts`). Not strictly required — the
+   `/profile` scoring flow and the `/controls` page both self-seed their
+   respective content on first use — but running it explicitly after a
+   content change is still good practice.
 
 Copy `.env.example` to `.env.local` for local dev.
 
@@ -81,6 +121,17 @@ Copy `.env.example` to `.env.local` for local dev.
 - The standalone tool at `project-mmq67.vercel.app` (repo
   `gingit518/riskq-regulation-lookup`) still runs independently. Porting its
   logic here doesn't retire it — that's a separate decision for you.
+- **Cyber Controls content is a starting scaffold, not verified compliance
+  content.** See "What's built (Phase 2)" above — the NIST CSF 2.0 taxonomy
+  itself is solid public reference material, but the per-category
+  "relevant regulation groups" tag is my own rough guess, and ISO 27001/CIS/
+  800-53 aren't seeded at all yet. Don't present the Cyber Controls gap
+  summary to a customer as a legally-reviewed mapping.
+- **Business Obligations has no per-obligation source citation** — the
+  obligation text comes verbatim from each regulation's `obls` array (same
+  provenance/review status as the regulation library itself, PRD §9 item 3),
+  but there's no link back to the actual statute section it derives from.
+  Worth adding once the legal review pass happens.
 
 ## Local development
 

@@ -25,12 +25,23 @@ export default function SignupPage() {
     });
     setSubmitting(false);
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      setError(
-        typeof body.error === "string"
-          ? body.error
-          : "Signup failed — check your input (password needs 8+ characters)."
-      );
+      // Surface the real cause instead of a guessed one — see PRD Appendix A
+      // "bug found, not yet fixed": this used to fall back to a hardcoded
+      // "password needs 8+ characters" message for ANY non-string error body
+      // (a Zod validation object, or an opaque 500 with no JSON body at all),
+      // which masked an unrelated missing-migration bug during real testing.
+      const body = await res.json().catch(() => null);
+      let message = `Signup failed (HTTP ${res.status}). Check the server logs for details.`;
+      if (body && typeof body.error === "string") {
+        message = body.error;
+      } else if (body?.error?.fieldErrors) {
+        const fieldErrors = body.error.fieldErrors as Record<string, string[]>;
+        const firstField = Object.keys(fieldErrors).find((k) => fieldErrors[k]?.length);
+        message = firstField
+          ? `${firstField}: ${fieldErrors[firstField][0]}`
+          : "Signup failed — invalid input.";
+      }
+      setError(message);
       return;
     }
     router.push("/profile");

@@ -8,6 +8,13 @@
       "when": 1789146867580,
       "tag": "0000_lyrical_gauntlet",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789152520081,
+      "tag": "0001_wonderful_chat",
+      "breakpoints": true
     }
   ]
 }
