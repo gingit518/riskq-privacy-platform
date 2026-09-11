@@ -145,15 +145,21 @@ Copy `.env.example` to `.env.local` for local dev.
   provenance/review status as the regulation library itself, PRD §9 item 3),
   but there's no link back to the actual statute section it derives from.
   Worth adding once the legal review pass happens.
-- **New finding, not yet fixed: `drizzle-orm@0.33.0` has a high-severity SQL
-  injection advisory** (GHSA-gpj5-g38j-94v9, fixed in 0.45.2) — surfaced by
-  `npm audit` while adding `@vercel/blob` this session. Not fixed here: the
-  jump from 0.33.0 to 0.45.2 spans many 0.x releases, each of which can carry
-  breaking API changes under semver's pre-1.0 convention, and this scaffold
-  has no automated test suite to validate the upgrade against — the same
-  "flag honestly, don't silently patch or silently ignore" treatment as the
-  Next.js 14.2.35 residual CVEs below. Needs its own dedicated upgrade-and-
-  retest pass, not a same-commit bump alongside a feature change.
+- **Fixed: `drizzle-orm` bumped 0.33.0 → 0.45.2** (`drizzle-kit` 0.24.2 →
+  0.31.10 alongside it), closing a high-severity SQL injection advisory
+  (GHSA-gpj5-g38j-94v9 / CVE-2026-39356). Checked the actual advisory before
+  deciding: it only affects `sql.identifier()`, `.as()` aliases, or dynamic
+  sorting/CTE names built from untrusted input — this codebase uses none of
+  those (verified by grep), so exploitability here was already effectively
+  zero. Fixed anyway once RiskQ's pen-test/SOC 2 plan came up: automated SCA
+  scanning (what both a pen test and a SOC 2 vulnerability-management review
+  actually run) flags by version number, not by reachability analysis, and
+  RiskQ's own buyers (CISOs, privacy officers) are exactly the audience
+  likely to run a dependency scan on a compliance product before buying it.
+  `npm run typecheck`, `drizzle-kit generate` (confirmed zero schema drift),
+  and `npm run build` all verified clean post-upgrade — there is still no
+  automated test suite, so a full manual click-through after this deploys is
+  the real verification, same as every other change in this project.
 - **No error-message UI for evidence upload failures.** `uploadEvidence()` in
   `src/lib/evidence.ts` throws a clear message on a missing Blob token, an
   empty file, or an oversized file (>8MB) — but the two upload forms
