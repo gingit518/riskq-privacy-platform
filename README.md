@@ -1,12 +1,13 @@
-# RiskQ Privacy Compliance Platform — Phase 1 + 2 scaffold
+# RiskQ Privacy Compliance Platform — Phase 1 + 2 + 3 scaffold
 
 Multi-tenant SaaS privacy compliance platform. Phase 1 = Regulatory
 Management, the module every other module (Business Obligations, DSAR,
 Cyber Controls, Assessments, International Transfers, Tracking Technologies)
 derives scope from. Phase 2 = Business Obligations + Cyber Controls, wired to
-that scope. See the PRD (`PRD-Privacy-Application.md` in the Privacy
-Development project) for the full product spec — this README covers only
-what's needed to run and extend this codebase.
+that scope. Phase 3 = Data Subject Access Rights (DSAR), also wired to that
+scope. See the PRD (`PRD-Privacy-Application.md` in the Privacy Development
+project) for the full product spec — this README covers only what's needed
+to run and extend this codebase.
 
 ## What's built (Phase 1)
 
@@ -60,13 +61,65 @@ what's needed to run and extend this codebase.
   date, and size. Append-only — no delete button in the UI, same audit-trail
   philosophy as the rest of this schema. Needs its own setup step, see below.
 
+## What's built (Phase 3)
+
+- **DSAR requests** (`dsar_requests`, `dsar_events`, `src/app/dsar/`) — two
+  intake paths writing to the same table: an internal authenticated form
+  (`/dsar/new`) and a public unauthenticated form at `/intake/<org-slug>`
+  (`src/app/intake/[slug]/`, `src/components/PublicIntakeForm.tsx`) for data
+  subjects to submit requests directly. `dsar_events` is an append-only audit
+  trail — every status change and identity-verification event, timestamped.
+- **SLA derivation** (`src/lib/dsar/sla.ts`) — PRD §5.3 says the SLA clock is
+  "pulled from Regulatory Management scoping, per-regulation" (citing GDPR 30
+  days vs. CCPA 45 days). The ported regulation data has exactly that field
+  (`resp`, see `regulations/types.ts`) but it's free text across all 92
+  entries — `'30 days'`, `'Reasonable time'`, `'N/A'`, `'20 business days'`,
+  etc., not a clean number, and it's one field per regulation, not broken out
+  by request type (access vs. deletion vs. correction vs. portability vs.
+  opt-out). At request creation, this parses every currently in-scope
+  regulation's `resp` field and, **per Ariel's explicit call (2026-09-11),
+  picks the SHORTEST parseable response window** as the governing regulation
+  and due date; regulations with no parseable day count (breach-notification-
+  only regs, or vague text like "Reasonable time") are excluded from the
+  calculation rather than producing a false due date. A statute specifying
+  business/working days is approximated as calendar days (flagged in the UI,
+  not silently treated as exact — this app has no business-day calendar).
+  The governing regulation/SLA is snapshotted onto the request at creation
+  time, same audit-trail-over-live-recompute philosophy as
+  `org_obligations`/`evidence_files`: a later scope re-analysis never
+  retroactively moves an already-open request's due date.
+- **Configurable checklists** (`dsar_checklist_templates` +
+  `dsar_checklist_items`, `/dsar/checklist`) — per Ariel's explicit call
+  (2026-09-11), checklists are editable per org from day one, not a fixed
+  global list like Cyber Controls' NIST seed. Each (org, request type) gets a
+  generic default checklist (`src/lib/dsar/checklist-defaults.ts`) the first
+  time it's touched; orgs can add/remove items after that. Each request
+  snapshots the template into its own `dsar_checklist_items` rows at creation
+  time — editing the template later never changes an already-open request's
+  checklist.
+- **Response templates** (`src/lib/dsar/templates.ts`,
+  `src/components/ResponseTemplates.tsx`) — acknowledgment/completion/denial
+  text per request, with copy-to-clipboard. This app has no email-sending
+  capability, so these are pasted into the staff member's own email client,
+  not sent automatically.
+- **Reporting** (`/dsar` dashboard) — volume, average response time (based
+  on closed requests), and SLA breach rate, computed live from
+  `dsar_requests`/`dsar_events`.
+- `src/lib/scope.ts` — the "read the latest scope run + its metadata
+  snapshot" helper that Business Obligations already had was extracted out
+  of `obligations/actions.ts` into this shared file so DSAR could reuse it
+  without a second slightly-diverging copy. `obligations/actions.ts` now
+  wraps it (a plain re-export isn't allowed in a `"use server"` file — Next's
+  compiler requires every export there to be a locally-defined async
+  function).
+
 ## What's NOT built yet
 
-DSAR tracking, Assessments (DPIA/PIA, readiness/maturity, RoPA — **not**
-vendor/TPRM, which is explicitly out of scope for this product per Ariel's
-instruction), International Transfers, Tracking Technologies/CMP (scoped in
-PRD §5.9), and Automated DSAR fulfillment (scoped in PRD §5.10). Those are
-later phases per the PRD roadmap (§8).
+Assessments (DPIA/PIA, readiness/maturity, RoPA — **not** vendor/TPRM, which
+is explicitly out of scope for this product per Ariel's instruction),
+International Transfers, Tracking Technologies/CMP (scoped in PRD §5.9), and
+Automated DSAR fulfillment (scoped in PRD §5.10). Those are later phases per
+the PRD roadmap (§8).
 
 ## Setup required before this deploys
 
@@ -167,6 +220,28 @@ Copy `.env.example` to `.env.local` for local dev.
   failure currently surfaces as Next's generic error page rather than an
   inline message next to the file picker. Low-effort follow-on, same shape
   as the earlier signup error-masking fix.
+- **Public DSAR intake link uses the org's slug, not a secret token** — see
+  "What's built (Phase 3)". `/intake/<slug>` is the same slug used at signup,
+  which is guessable/enumerable, not a per-org secret. Fine for V1 since
+  submitting a request isn't itself sensitive (no data is disclosed by
+  submitting), but worth a random per-org token before treating this as a
+  hardened public surface.
+- **No rate limiting on the public intake form** — nothing stops repeated or
+  automated submissions. Low risk today (there's no email-sending or
+  auto-fulfillment triggered by a submission), but worth adding before real
+  traffic.
+- **DSAR SLA is one field per regulation, not per request type.** See
+  `src/lib/dsar/sla.ts` — the ported regulation data's `resp` field doesn't
+  distinguish access vs. deletion vs. correction vs. portability vs. opt-out
+  response windows, so the SLA calculation treats all five the same way per
+  regulation. Revisit if a future legal-review pass (PRD §9 item 3/7) adds
+  per-right timelines.
+- **Business/working-day statutes are approximated as calendar days** — no
+  business-day calendar in this app yet (see `sla.ts`); the UI flags this on
+  affected requests rather than presenting the due date as exact.
+- **Checklist template items can't be reordered** — new items append at the
+  end (`/dsar/checklist`); removing and re-adding is the only way to
+  resequence for now.
 
 ## Local development
 

@@ -196,6 +196,103 @@ export const orgControls = pgTable("org_controls", {
 // updateControlStatus in controls/actions.ts), but you should be able to
 // attach evidence to a control before ever touching its status. orgId still
 // scopes the row to a tenant.
+// ---------------------------------------------------------------------------
+// Phase 3 (PRD §8) — Data Subject Access Rights / DSAR (§5.3).
+//
+// SLA derivation lives in src/lib/dsar/sla.ts, not here — governingRegulation
+// + slaDays + slaDueAt are computed once at request creation from the org's
+// current in-scope regulations (shortest parseable response window wins per
+// Ariel's 2026-09-11 call) and then stored as a snapshot, same
+// audit-trail-over-live-recompute philosophy as org_obligations/
+// evidence_files: a later "Analyze scope" run or REGS content edit must
+// never retroactively change a due date on an already-open request.
+// ---------------------------------------------------------------------------
+
+export const dsarRequestTypeEnum = pgEnum("dsar_request_type", [
+  "access",
+  "deletion",
+  "correction",
+  "portability",
+  "opt_out",
+]);
+
+export const dsarStatusEnum = pgEnum("dsar_status", [
+  "intake",
+  "verifying",
+  "in_progress",
+  "completed",
+  "denied",
+]);
+
+export const dsarRequests = pgTable("dsar_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  requesterName: text("requester_name").notNull(),
+  requesterEmail: text("requester_email").notNull(),
+  requestType: dsarRequestTypeEnum("request_type").notNull(),
+  status: dsarStatusEnum("status").notNull().default("intake"),
+  // Snapshot of the governing regulation at creation time — see comment
+  // above. Null slaDays/slaDueAt means no in-scope regulation had a
+  // parseable response window (still tracked, no enforced deadline).
+  governingRegulationAcronym: text("governing_regulation_acronym"),
+  governingRegulationName: text("governing_regulation_name"),
+  slaDays: integer("sla_days"),
+  slaIsBusinessDays: boolean("sla_is_business_days").notNull().default(false),
+  slaDueAt: timestamp("sla_due_at", { withTimezone: true }),
+  identityVerified: boolean("identity_verified").notNull().default(false),
+  identityVerifiedAt: timestamp("identity_verified_at", { withTimezone: true }),
+  identityVerifiedBy: uuid("identity_verified_by").references(() => users.id),
+  owner: text("owner").notNull().default(""),
+  notes: text("notes").notNull().default(""),
+  // "public" (submitted via the unauthenticated /intake/[slug] form) or
+  // "internal" (staff manual entry) — both write to this same table.
+  source: text("source").notNull().default("internal"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+});
+
+// Append-only audit trail — every status change and material action on a
+// request, timestamped. actorId is null for the initial "created" event on a
+// publicly-submitted request (no authenticated user performed it).
+export const dsarEvents = pgTable("dsar_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  requestId: uuid("request_id").notNull().references(() => dsarRequests.id, { onDelete: "cascade" }),
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  eventType: text("event_type").notNull(),
+  detail: text("detail").notNull().default(""),
+  actorId: uuid("actor_id").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Per-org, per-request-type checklist definitions — configurable from day
+// one (Ariel's explicit call, 2026-09-11), unlike Cyber Controls' fixed
+// global NIST seed. Self-seeded with DEFAULT_CHECKLIST_ITEMS the first time
+// an org touches a given request type; editable after that via
+// dsar/checklist actions. sortOrder is a plain integer, no reordering UI in
+// V1 — new items append at the end.
+export const dsarChecklistTemplates = pgTable("dsar_checklist_templates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  requestType: dsarRequestTypeEnum("request_type").notNull(),
+  label: text("label").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// A per-request SNAPSHOT of the template at the time the request was
+// created — editing the template later must never retroactively change the
+// checklist on an already-open request, same audit-trail principle as
+// everything else in this schema.
+export const dsarChecklistItems = pgTable("dsar_checklist_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  requestId: uuid("request_id").notNull().references(() => dsarRequests.id, { onDelete: "cascade" }),
+  label: text("label").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  done: boolean("done").notNull().default(false),
+  doneAt: timestamp("done_at", { withTimezone: true }),
+  doneBy: uuid("done_by").references(() => users.id),
+});
+
 export const evidenceFiles = pgTable("evidence_files", {
   id: uuid("id").primaryKey().defaultRandom(),
   orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),

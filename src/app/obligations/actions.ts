@@ -18,44 +18,15 @@
 // current scope" instead of deleting.
 
 import { revalidatePath } from "next/cache";
-import { and, desc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { orgObligations, orgRegulationScope, regulationSets } from "@/lib/db/schema";
+import { orgObligations } from "@/lib/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { uploadEvidence } from "@/lib/evidence";
-import type { RegulationMetadata } from "@/lib/regulations/types";
-
-export interface ScopeRegSummary {
-  acronym: string;
-  name: string;
-  group: string;
-  inScope: boolean;
-  watch: boolean;
-}
-
-/** Reads the latest scope run and its regulation-set metadata together.
- * Returns null if the org has never run "Save & analyze scope" yet. */
-async function getLatestScopeWithMetadata(orgId: string) {
-  const db = getDb();
-  const [scopeRow] = await db
-    .select()
-    .from(orgRegulationScope)
-    .where(eq(orgRegulationScope.orgId, orgId))
-    .orderBy(desc(orgRegulationScope.computedAt))
-    .limit(1);
-  if (!scopeRow) return null;
-
-  const [regSet] = await db
-    .select()
-    .from(regulationSets)
-    .where(eq(regulationSets.id, scopeRow.regulationSetId))
-    .limit(1);
-  if (!regSet) return null;
-
-  const results = scopeRow.results as ScopeRegSummary[];
-  const metadata = regSet.metadata as RegulationMetadata[];
-  return { scopeRow, results, metadata };
-}
+import {
+  getLatestScopeWithMetadata,
+  getCurrentInScopeAcronyms as sharedGetCurrentInScopeAcronyms,
+} from "@/lib/scope";
 
 /** Inserts a not_started obligation row for every obligation text on every
  * currently in-scope regulation, skipping any that already exist. Safe to
@@ -155,8 +126,11 @@ export async function uploadObligationEvidence(formData: FormData): Promise<void
   revalidatePath("/obligations");
 }
 
+// Thin wrapper so obligations/page.tsx's existing import doesn't need to
+// change — the implementation now lives in src/lib/scope.ts, shared with
+// DSAR (Phase 3). (A plain `export { x } from "y"` re-export isn't allowed
+// in a "use server" file — Next's compiler rejects anything that isn't a
+// locally-defined async function — hence the wrapper instead of a re-export.)
 export async function getCurrentInScopeAcronyms(orgId: string): Promise<Set<string>> {
-  const scope = await getLatestScopeWithMetadata(orgId);
-  if (!scope) return new Set();
-  return new Set(scope.results.filter((r) => r.inScope).map((r) => r.acronym));
+  return sharedGetCurrentInScopeAcronyms(orgId);
 }

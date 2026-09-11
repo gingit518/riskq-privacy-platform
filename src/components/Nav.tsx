@@ -33,6 +33,9 @@ export default function Nav() {
       <Link href="/controls" style={linkStyle}>
         Cyber Controls
       </Link>
+      <Link href="/dsar" style={linkStyle}>
+        DSAR
+      </Link>
       <form action="/api/auth/logout" method="post" style={{ marginLeft: "auto" }}>
         <button type="submit">Log out</button>
       </form>
