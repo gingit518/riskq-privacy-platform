@@ -45,6 +45,12 @@ export default function Nav() {
       <Link href="/assessments" style={linkStyle}>
         Assessments
       </Link>
+      <Link href="/tracking" style={linkStyle}>
+        Tracking Tech
+      </Link>
+      <Link href="/compliance" style={linkStyle}>
+        Compliance
+      </Link>
       <form action="/api/auth/logout" method="post" style={{ marginLeft: "auto" }}>
         <button type="submit">Log out</button>
       </form>

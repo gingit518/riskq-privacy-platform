@@ -538,3 +538,50 @@ export const internationalTransfers = pgTable("international_transfers", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------------------
+// Phase 5 (PRD §5.6/§5.8/§8) — Tracking Technologies (manual registry) and
+// Compliance Dashboard/Reporting, built 2026-09-12. Per Ariel's explicit
+// calls that day: the registry's "tied to consent-requirement flags from
+// Regulatory Management" language (§5.6) is satisfied by a curated,
+// separately-maintained tag on which ported regulations require
+// cookie/tracker consent (src/lib/regulations/tracking-consent-tags.ts) —
+// same indicative-not-legally-reviewed caveat as Cyber Controls' regulation
+// tags — surfaced as an informational banner on the registry page, not a
+// per-entry auto-decision. The dashboard's "compliance score" is a simple
+// unweighted % blend (obligations-done % + DSAR SLA-met % per regulation;
+// controls-implemented % only at the jurisdiction-group level, since
+// controls_library isn't tagged to specific regulation acronyms — see
+// compliance/score.ts for why that's a real granularity gap, not an
+// oversight). It is computed live on every page load, not persisted — no
+// new "compliance_scores" table, consistent with how /assessments already
+// aggregates other modules' tables live rather than caching a score.
+// ---------------------------------------------------------------------------
+
+export const trackingCategoryEnum = pgEnum("tracking_category", [
+  "strictly_necessary",
+  "functional",
+  "analytics",
+  "advertising",
+  "social_media",
+  "other",
+]);
+export const trackingPartyEnum = pgEnum("tracking_party", ["first_party", "third_party"]);
+
+// Manual/import registry (§5.6) — nothing here scans a customer's site;
+// staff enters what they know is running. Same active/retire pattern (not
+// hard-deleted) as dsar_systems/legal_holds, so retiring an entry doesn't
+// erase the record of it having existed.
+export const trackingTechnologies = pgTable("tracking_technologies", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  purpose: text("purpose").notNull().default(""),
+  category: trackingCategoryEnum("category").notNull().default("other"),
+  party: trackingPartyEnum("party").notNull().default("third_party"),
+  retention: text("retention").notNull().default(""),
+  active: boolean("active").notNull().default(true),
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

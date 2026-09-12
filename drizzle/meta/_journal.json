@@ -43,6 +43,13 @@
       "when": 1789241845127,
       "tag": "0005_gifted_hitman",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789243537282,
+      "tag": "0006_bitter_sentinel",
+      "breakpoints": true
     }
   ]
 }

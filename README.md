@@ -1,4 +1,4 @@
-# RiskQ Privacy Compliance Platform — Phase 1 + 2 + 3 + 3.1 + 4 scaffold
+# RiskQ Privacy Compliance Platform — Phase 1 + 2 + 3 + 3.1 + 4 + 5 scaffold
 
 Multi-tenant SaaS privacy compliance platform. Phase 1 = Regulatory
 Management, the module every other module (Business Obligations, DSAR,
@@ -9,7 +9,9 @@ scope. Phase 3.1 = DSAR fulfillment automation — turning the default
 fulfillment checklist's line items into tracked/assigned/auditable actions
 where that's honestly possible (see "What's built (Phase 3.1)" for what
 is and isn't). Phase 4 = Assessments (RoPA, DPIA, readiness/maturity) and
-International Transfers (see "What's built (Phase 4)"). See the PRD
+International Transfers (see "What's built (Phase 4)"). Phase 5 = Tracking
+Technologies (manual registry) and a Compliance Dashboard with CSV/PDF
+export (see "What's built (Phase 5)"). See the PRD
 (`PRD-Privacy-Application.md` in the Privacy Development project) for the
 full product spec — this README covers only what's needed to run and extend
 this codebase.
@@ -228,17 +230,71 @@ Systems Register (`dsar_systems`) rather than a second systems list.
   no mechanism, and controls-maturity-assessed, each linking to the page
   that can act on it.
 
+## What's built (Phase 5)
+
+Built 2026-09-12 (PRD §5.6/§5.8/§8), after three build-unblocking calls from
+Ariel: the Tracking Technologies "tied to consent-requirement flags"
+language is satisfied by a curated regulation tag (not a live scan); the
+Compliance Dashboard's score is a simple unweighted % blend; exportable
+reports ship as both CSV and PDF now, not CSV-only.
+
+- **Tracking Technologies registry** (`tracking_technologies`, `/tracking`)
+  — manual/import list (name, purpose, category, first/third-party,
+  retention), same active/retire pattern as the DSAR Systems Register and
+  Legal Holds. "Tied to consent-requirement flags from Regulatory
+  Management" (§5.6) is implemented as a curated tag on which of the 92
+  ported regulations require cookie/tracker consent
+  (`regulations/tracking-consent-tags.ts`) — my own indicative judgment
+  call, same not-legally-reviewed caveat as Cyber Controls' regulation
+  tags — surfaced as an informational banner ("N regulations in your scope
+  require consent: ...") rather than an automatic per-entry decision.
+  Nothing here scans a site; that's the deferred Phase 6 CMP build (§5.9).
+- **Compliance Dashboard** (`/compliance`, computed live — no new
+  persisted score table) — a blended score per in-scope regulation
+  (unweighted average of obligations-done %, DSAR SLA-met %, and
+  controls-implemented %), plus an overall org score, rendered as a
+  red/amber/green heatmap. **A real granularity gap, flagged rather than
+  smoothed over:** obligations and DSAR are tagged to a specific
+  regulation acronym, but Cyber Controls content is only tagged to a
+  broad jurisdiction group (US Federal/US State/International) — so the
+  controls figure in a regulation's blended score is really "controls
+  implemented for that whole jurisdiction group," not that specific
+  regulation. A missing signal (no obligations tracked for a regulation,
+  no closed DSAR requests) is excluded from the average, never counted as
+  zero.
+- **CSV and PDF export** (`/compliance/export/csv`, `/compliance/export/pdf`)
+  — both built now per Ariel's call. PDF uses `pdfkit` (pure JS, no
+  headless-browser dependency, so it runs in a normal Vercel serverless
+  function) — added as a new dependency, exact-pinned like everything
+  else in this project; `iconv-lite` added alongside it to close a
+  build-warning-only gap in `pdfkit`'s font-encoding dependency chain
+  (verified: only affects custom non-UTF8 font embedding, which this
+  report never does).
+- **"Recent activity" on the dashboard is DSAR's own event log, not a true
+  cross-module audit trail.** §5.8 asks for "a cross-module audit trail" —
+  Obligations and Cyber Controls don't emit any events today (just an
+  `updatedAt` timestamp on each row), so a genuine cross-module log needs
+  a new generic event table those modules write to. Not built in this
+  pass — the dashboard shows `dsar_events` under an explicit "(DSAR only)"
+  label rather than silently presenting a partial feed as the full thing.
+
 ## What's NOT built yet
 
-Tracking Technologies/CMP (scoped in PRD §5.9) — the last module on the PRD
-roadmap (§8) — is not built. Automated DSAR fulfillment (PRD §5.10) is
-partially built — see "What's built (Phase 3.1)" — the pieces that are
-genuinely automatable (systems fan-out, legal-hold lookup, export
-attachment, response send) are done; identity-proofing and auto-redaction
-are deliberately not, per the reasoning in that section. Assessments/RoPA/
-DPIA/readiness-maturity and International Transfers are now built — see
-"What's built (Phase 4)" — **not** vendor/TPRM, which stays explicitly out
-of scope for this product per Ariel's instruction.
+Live tracker scanning + consent management (CMP, PRD §5.9) — the manual
+registry above is Phase 5's honest scope; nothing scans a customer's site
+or blocks a script pre-consent. Blocked on your buy-vs-build call (and, if
+buying, a vendor/budget) before any of that can start. The remaining
+pieces of Automated DSAR Fulfillment (PRD §5.10) — the connector framework,
+identity resolution, approval workflow, and sub-processor notification —
+are also not built; Phase 3.1 already shipped the honestly-automatable
+DSAR pieces (systems fan-out, legal-hold lookup, export attachment,
+response send). Connector priority is now set (Salesforce, M365, Google
+Drive, per Ariel's 2026-09-12 call) but no connector code exists yet — this
+is the first phase that would write to systems outside this app's own
+database, so it gets its own design pass (interface, identity resolution,
+approval-gate UI) before any implementation, per the permanent
+human-approval-gate constraint in §7. **Not** vendor/TPRM, which stays
+explicitly out of scope for this product per Ariel's instruction.
 
 ## Setup required before this deploys
 
@@ -417,6 +473,27 @@ Copy `.env.example` to `.env.local` for local dev.
   upload elsewhere in this app: a validation failure in the RoPA/DPIA/
   Transfers server actions surfaces as Next's generic error page, not an
   inline message.
+- **Tracking Technologies consent tag is a curated list, not a legal
+  determination.** `regulations/tracking-consent-tags.ts` is my own
+  indicative judgment about which of the 92 ported regulations require
+  cookie/tracker consent — same caveat category as the regulation library
+  itself and Cyber Controls' regulation-group tags. Don't present it to a
+  customer as a compliance mapping without review.
+- **Tracking Technologies registry has no scanning, blocking, or
+  per-visitor consent logging.** It's a manual list a staffer fills in —
+  the real enforcement mechanism (Phase 6 CMP, PRD §5.9) is a separate,
+  larger, not-yet-started build.
+- **Compliance Dashboard's "controls implemented %" is jurisdiction-group
+  level, not regulation-specific** (above) — a real precision gap in the
+  blended score, not a rounding artifact.
+- **Compliance Dashboard's "cross-module audit trail" is DSAR-only**
+  (above) — Obligations and Cyber Controls don't emit events yet.
+- **No error-message UI for the Tracking Technologies or export forms** —
+  same known-gap pattern as every other upload/action form in this app.
+- **PDF/CSV exports have no access control beyond the existing session
+  check** — any authenticated user in an org can export that org's full
+  compliance report; there's no separate "can export reports" permission
+  distinct from general app access.
 
 ## Local development
 
