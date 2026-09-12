@@ -61,6 +61,9 @@ export default async function DsarDashboardPage() {
             <Link href="/dsar/legal-holds" style={{ marginRight: 16 }}>
               Legal Holds
             </Link>
+            <Link href="/dsar/sub-processors" style={{ marginRight: 16 }}>
+              Sub-processors
+            </Link>
             <Link href="/dsar/new">Log a request</Link>
           </div>
         </div>

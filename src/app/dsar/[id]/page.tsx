@@ -17,6 +17,9 @@ import {
 import { findActiveLegalHold } from "@/lib/dsar/legal-holds";
 import { listSystemTasks } from "@/lib/dsar/systems";
 import { listEvidenceForDsarRequest } from "@/lib/evidence";
+import { listRunsWithMatches } from "@/lib/dsar/connector-fulfillment";
+import { listConnections } from "@/lib/connectors/connections";
+import { listConnectorInfo } from "@/lib/connectors/registry";
 import {
   updateDsarStatus,
   verifyIdentity,
@@ -24,6 +27,9 @@ import {
   toggleSystemTask,
   uploadDsarEvidence,
   sendDsarResponse,
+  runFulfillmentSearchAction,
+  decideMatchAction,
+  executeApprovedMatchesAction,
 } from "../actions";
 import ResponseTemplates from "@/components/ResponseTemplates";
 import DsarChecklist from "@/components/DsarChecklist";
@@ -64,6 +70,14 @@ export default async function DsarRequestDetailPage({ params }: { params: { id: 
   const legalHold = await findActiveLegalHold(session.orgId, request.requesterEmail);
   const systemTasks = await listSystemTasks(session.orgId, request.id);
   const attachedFiles = await listEvidenceForDsarRequest(session.orgId, request.id);
+
+  const connectorLabels = new Map(listConnectorInfo().map((c) => [c.id, c.label]));
+  const connectorLabelOf = (id: string) => connectorLabels.get(id as never) ?? id;
+  const allConnections = await listConnections(session.orgId);
+  const connectedConnectors = allConnections
+    .filter((c) => c.active)
+    .map((c) => ({ connectorId: c.connectorId, label: connectorLabelOf(c.connectorId) }));
+  const runsWithMatches = await listRunsWithMatches(session.orgId, request.id);
 
   const dueDateText = request.slaDueAt ? fmtDateTime(request.slaDueAt) : "";
 
@@ -195,6 +209,86 @@ export default async function DsarRequestDetailPage({ params }: { params: { id: 
           Systems to check (<a href="/dsar/systems">manage register</a>)
         </h2>
         <SystemTasks requestId={request.id} tasks={systemTasks} toggleAction={toggleSystemTask} />
+
+        <h2>
+          Fulfillment — connected systems (<a href="/connectors">manage connectors</a>)
+        </h2>
+        <p style={{ color: "#666", fontSize: 13 }}>
+          Searches connected systems (exact email match only) for this
+          requester&apos;s data. Nothing is exported or deleted automatically
+          — every match below requires explicit approval first, and a
+          proposed delete is blocked outright if this requester is under an
+          active legal hold.
+        </p>
+        {connectedConnectors.length === 0 ? (
+          <p style={{ fontSize: 14 }}>
+            No connectors connected yet. <a href="/connectors">Connect one</a> to
+            search it for this requester&apos;s data.
+          </p>
+        ) : (
+          <>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              {connectedConnectors.map((c) => (
+                <form action={runFulfillmentSearchAction} key={c.connectorId}>
+                  <input type="hidden" name="requestId" value={request.id} />
+                  <input type="hidden" name="connectorId" value={c.connectorId} />
+                  <button type="submit">Search {c.label}</button>
+                </form>
+              ))}
+            </div>
+            {runsWithMatches.map(({ run, matches }) => (
+              <div
+                key={run.id}
+                style={{ border: "1px solid #eee", borderRadius: 4, padding: 12, marginBottom: 12 }}
+              >
+                <strong>{connectorLabelOf(run.connectorId)}</strong>{" "}
+                <span style={{ fontSize: 13, color: "#666" }}>
+                  — {run.status}
+                  {run.errorDetail && ` (${run.errorDetail})`}
+                </span>
+                {matches.length > 0 && (
+                  <ul style={{ fontSize: 13, paddingLeft: 16 }}>
+                    {matches.map((m) => (
+                      <li key={m.id} style={{ marginBottom: 4 }}>
+                        <strong>{m.externalObjectType}</strong>{" "}
+                        {Object.values(m.snapshot as Record<string, string>).join(" — ")}{" "}
+                        <span style={{ color: "#666" }}>(proposed: {m.requestedAction})</span>
+                        {m.decision === "pending" ? (
+                          <span style={{ marginLeft: 8 }}>
+                            <form action={decideMatchAction} style={{ display: "inline" }}>
+                              <input type="hidden" name="requestId" value={request.id} />
+                              <input type="hidden" name="matchId" value={m.id} />
+                              <input type="hidden" name="decision" value="approved" />
+                              <button type="submit">Approve</button>
+                            </form>{" "}
+                            <form action={decideMatchAction} style={{ display: "inline" }}>
+                              <input type="hidden" name="requestId" value={request.id} />
+                              <input type="hidden" name="matchId" value={m.id} />
+                              <input type="hidden" name="decision" value="rejected" />
+                              <button type="submit">Reject</button>
+                            </form>
+                          </span>
+                        ) : (
+                          <span style={{ marginLeft: 8, color: m.decision === "rejected" ? "#999" : "#333" }}>
+                            {m.decision}
+                            {m.result !== "pending" && ` — ${m.result}${m.resultDetail ? `: ${m.resultDetail}` : ""}`}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {matches.some((m) => m.decision === "approved" && m.result === "pending") && (
+                  <form action={executeApprovedMatchesAction}>
+                    <input type="hidden" name="requestId" value={request.id} />
+                    <input type="hidden" name="runId" value={run.id} />
+                    <button type="submit">Execute approved</button>
+                  </form>
+                )}
+              </div>
+            ))}
+          </>
+        )}
 
         <h2>Compiled export / evidence files</h2>
         <p style={{ color: "#666", fontSize: 13 }}>

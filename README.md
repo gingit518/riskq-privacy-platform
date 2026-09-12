@@ -1,4 +1,4 @@
-# RiskQ Privacy Compliance Platform — Phase 1 + 2 + 3 + 3.1 + 4 + 5 scaffold
+# RiskQ Privacy Compliance Platform — Phase 1 + 2 + 3 + 3.1 + 4 + 5 + 7 scaffold
 
 Multi-tenant SaaS privacy compliance platform. Phase 1 = Regulatory
 Management, the module every other module (Business Obligations, DSAR,
@@ -11,10 +11,14 @@ where that's honestly possible (see "What's built (Phase 3.1)" for what
 is and isn't). Phase 4 = Assessments (RoPA, DPIA, readiness/maturity) and
 International Transfers (see "What's built (Phase 4)"). Phase 5 = Tracking
 Technologies (manual registry) and a Compliance Dashboard with CSV/PDF
-export (see "What's built (Phase 5)"). See the PRD
-(`PRD-Privacy-Application.md` in the Privacy Development project) for the
-full product spec — this README covers only what's needed to run and extend
-this codebase.
+export (see "What's built (Phase 5)"). Phase 6 (live tracker scanning/CMP)
+is skipped for now, pending Ariel's buy-vs-build call. Phase 7 = the
+connector framework, approval-gate UI, and legal-hold/sub-processor pieces
+of Assisted DSAR Fulfillment — real Salesforce/M365/Google Drive API calls
+are NOT implemented yet, see "What's built (Phase 7)" for exactly what's
+real vs. stubbed. See the PRD (`PRD-Privacy-Application.md` in the Privacy
+Development project) for the full product spec — this README covers only
+what's needed to run and extend this codebase.
 
 ## What's built (Phase 1)
 
@@ -278,23 +282,100 @@ reports ship as both CSV and PDF now, not CSV-only.
   pass — the dashboard shows `dsar_events` under an explicit "(DSAR only)"
   label rather than silently presenting a partial feed as the full thing.
 
+## What's built (Phase 7)
+
+Built 2026-09-12 (PRD §5.10/§7), after Ariel said "move to Phase 7" (Phase 6
+skipped for now). This is the first phase that writes to systems outside
+this app's own database, so it's scoped more cautiously than anything
+before it — a design pass (schema, interface, approval gate, legal-hold
+interaction) plus a fully clickable pipeline running against **fake data
+only**. **No real Salesforce/M365/Google Drive account can be searched,
+exported from, or deleted from yet** — that's the single most important
+thing to understand about this phase before touching it.
+
+- **Connector interface** (`src/lib/connectors/types.ts`) — `search` /
+  `exportRecords` / `deleteRecords` only. **"correct" is deliberately not a
+  connector action** — it needs a per-org field-mapping config (which
+  Salesforce field is "mailing address," etc.) that's separate scope;
+  correction stays a manual process, same as with no connectors at all.
+- **Three connector files, all stubs**: `salesforce.ts`, `m365.ts`,
+  `google-drive.ts`. Each documents, in its own header comment, exactly
+  what real OAuth app registration and API wiring it needs — including two
+  real architectural decisions surfaced during this design pass, not
+  glossed over: M365 needs either admin-consented application permissions
+  or the Microsoft Purview eDiscovery API to search more than one person's
+  own mailbox (a per-user OAuth consent, the simple pattern, isn't enough);
+  Google Drive needs Workspace domain-wide delegation to search more than
+  files the connecting user personally owns. Neither decision has been
+  made yet. `isXConfigured()` in each file checks for the relevant env
+  vars and is the only thing that works today — `search`/`exportRecords`/
+  `deleteRecords` all throw "not implemented" unconditionally.
+- **A mock connector** (`connectors/mock.ts`, `connectors/registry.ts`),
+  gated behind `CONNECTOR_MOCK_MODE=true`, standing in for all three real
+  ones with deterministic fake matches — this is what makes the rest of
+  this phase reviewable end to end (`phase7-test-script.md`) without
+  needing a single real OAuth credential.
+- **New encryption-at-rest infrastructure** (`connectors/crypto.ts`) —
+  AES-256-GCM via Node's built-in `crypto`, no new dependency. Every other
+  secret in this app is either RiskQ's own env var (never in Postgres) or a
+  customer's bcrypt-hashed password (never decrypted). A connector's OAuth
+  refresh token is the first per-customer secret this app has to store and
+  read back in plaintext, so it gets real symmetric encryption, keyed by
+  a new `CONNECTOR_ENCRYPTION_KEY` env var — see `.env.example`.
+- **`/connectors` settings page** — connect/disconnect per org
+  (mock-mode "Connect" writes a fake connection; real-provider "Connect"
+  currently 501s with a plain-text explanation, from the stub
+  `/api/connectors/[connectorId]/authorize` route, rather than pretending
+  to start an OAuth flow that doesn't exist).
+- **Fulfillment section on the DSAR detail page** (`/dsar/[id]`) — the
+  approval-gate UI itself: "Search {connector}" → matched records list
+  (object type + a small display snapshot, never the full external
+  record) → per-record Approve/Reject → "Execute approved." A deletion
+  request defaults every match's proposed action to delete; every other
+  request type defaults to export.
+- **Hard legal-hold block on delete, no override** (Ariel's explicit
+  call, 2026-09-12) — checked LIVE at both approval time and execution
+  time (not snapshotted), reusing the same `findActiveLegalHold` lookup
+  Phase 3.1 already uses elsewhere on this page. Export is never blocked
+  by a hold.
+- **Narrow V1 search scope** (Ariel's explicit call): Salesforce
+  Contacts/Leads only, M365 Outlook mail only, Google Drive file metadata
+  only — not Cases/Opportunities, not SharePoint/Teams, not Drive file
+  contents. Documented as a real coverage gap, not silently assumed
+  complete.
+- **Exact-email-match identity resolution only** — no fuzzy/name/customer-
+  ID matching. The PRD itself flags false positives (wrong-record action)
+  as the higher-liability failure mode versus false negatives (a human
+  catches a miss on review) — so V1 deliberately narrows rather than
+  broadens matching.
+- **`dsar_connector_events`** — an append-only log independent of the
+  general `dsar_events` audit trail, satisfying §5.10's "immutable
+  execution log" requirement specifically. Logs summaries (record counts,
+  outcome), never the record payloads themselves.
+- **Sub-processor register** (`sub_processors`, `/dsar/sub-processors`) —
+  the §5.10 Art. 17(2)-style notification list. Manual, copy-ready notice
+  template only, same reasoning as every other "template, not automated
+  send" piece in this app (nothing here tracks what a specific processor
+  actually received for a given requester).
+- **No background job queue** — search/execute run synchronously inside
+  one request, capped at `MAX_RECORDS_PER_RUN` (25, `connectors/config.ts`)
+  per connector per run. A search returning more than that is truncated
+  and flagged in the run's log entry, not silently processed in full.
+
 ## What's NOT built yet
 
-Live tracker scanning + consent management (CMP, PRD §5.9) — the manual
-registry above is Phase 5's honest scope; nothing scans a customer's site
-or blocks a script pre-consent. Blocked on your buy-vs-build call (and, if
-buying, a vendor/budget) before any of that can start. The remaining
-pieces of Automated DSAR Fulfillment (PRD §5.10) — the connector framework,
-identity resolution, approval workflow, and sub-processor notification —
-are also not built; Phase 3.1 already shipped the honestly-automatable
-DSAR pieces (systems fan-out, legal-hold lookup, export attachment,
-response send). Connector priority is now set (Salesforce, M365, Google
-Drive, per Ariel's 2026-09-12 call) but no connector code exists yet — this
-is the first phase that would write to systems outside this app's own
-database, so it gets its own design pass (interface, identity resolution,
-approval-gate UI) before any implementation, per the permanent
-human-approval-gate constraint in §7. **Not** vendor/TPRM, which stays
-explicitly out of scope for this product per Ariel's instruction.
+**Every real connector API call.** Nothing in this phase can search,
+export from, or delete from an actual Salesforce org, M365 tenant, or
+Google Drive account — see "What's built (Phase 7)" above for exactly
+what's stubbed and why (OAuth app registration status was still being
+checked by Ariel as of this build). Also not built: the "correct" DSAR
+action (deferred, needs per-org field mapping — see above), automated
+sub-processor notification (manual template only), and the M365/Google
+Drive admin-consent-vs-simpler-flow decisions each connector's stub
+flags. Live tracker scanning + consent management (CMP, PRD §5.9) remains
+untouched, skipped in favor of Phase 7 per Ariel's 2026-09-12 call —
+still blocked on the buy-vs-build decision. **Not** vendor/TPRM, which
+stays explicitly out of scope for this product per Ariel's instruction.
 
 ## Setup required before this deploys
 
@@ -337,6 +418,14 @@ explicitly out of scope for this product per Ariel's instruction.
 8. **`APP_BASE_URL`** — your production URL, used to build the absolute
    download link emailed to requesters. Falls back to Vercel's
    auto-injected `VERCEL_URL` if unset; set it explicitly to be sure.
+9. **`CONNECTOR_ENCRYPTION_KEY`** (Phase 7) — required before connecting
+   any real connector (not needed for `CONNECTOR_MOCK_MODE`).
+   `openssl rand -base64 32`, same as `AUTH_SECRET`.
+10. **`SALESFORCE_CLIENT_ID`/`_SECRET`, `AZURE_CLIENT_ID`/`_SECRET`,
+    `GOOGLE_CLIENT_ID`/`_SECRET`** (Phase 7) — not usable yet regardless of
+    whether these are set; see "What's built (Phase 7)." Set
+    `CONNECTOR_MOCK_MODE=true` instead to review the fulfillment pipeline
+    against fake data.
 
 Copy `.env.example` to `.env.local` for local dev.
 
@@ -494,6 +583,32 @@ Copy `.env.example` to `.env.local` for local dev.
   check** — any authenticated user in an org can export that org's full
   compliance report; there's no separate "can export reports" permission
   distinct from general app access.
+- **No real connector API calls exist (Phase 7)** — search/export/delete
+  all throw "not implemented" for Salesforce/M365/Google Drive regardless
+  of env var configuration; only `CONNECTOR_MOCK_MODE` produces a working
+  end-to-end pipeline, against fake data. Don't connect a real provider
+  and expect anything to happen.
+- **M365 and Google Drive connectors need an architectural decision, not
+  just OAuth plumbing, before real search can start** — see "What's built
+  (Phase 7)" above (admin-consented app permissions/Purview for M365;
+  domain-wide delegation vs. single-user scope for Drive).
+- **"Correct" is not a Phase 7 connector action** — no per-org field-
+  mapping config exists to know which external field to overwrite; a
+  correction request still surfaces search matches for a human to act on
+  manually, same as any other request type.
+- **Sub-processor notification is a manual copy-ready template, not an
+  automated send** — nothing tracks what a specific processor actually
+  received for a given requester, so an automated send would be a guess
+  dressed up as a confirmation.
+- **No background job queue** — a connector search/execute run is capped
+  at 25 records (`connectors/config.ts`) and must complete inside one
+  synchronous Vercel function call. Fine for a design partner's DSAR
+  volume; a real scale ceiling for a large customer's Salesforce org.
+- **`connector_connections.accountLabel` has no real content yet** — once
+  a real OAuth callback exists, it should be populated with something a
+  staffer can use to confirm which real account is connected (e.g.
+  Salesforce's `instance_url`, an M365 tenant domain); not wired up since
+  no real callback exists yet either.
 
 ## Local development
 

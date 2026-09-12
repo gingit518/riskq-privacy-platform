@@ -16,6 +16,12 @@ import {
   dsarSystemTasks,
   orgs,
 } from "@/lib/db/schema";
+import type { ConnectorId } from "@/lib/connectors/types";
+import {
+  runFulfillmentSearch,
+  decideMatch,
+  executeApprovedMatches,
+} from "@/lib/dsar/connector-fulfillment";
 import { requireSession } from "@/lib/auth/session";
 import { createDsarRequest } from "@/lib/dsar/create";
 import { ensureChecklistTemplateSeeded } from "@/lib/dsar/checklist";
@@ -383,4 +389,71 @@ export async function removeChecklistTemplateItem(formData: FormData): Promise<v
     .where(and(eq(dsarChecklistTemplates.id, id), eq(dsarChecklistTemplates.orgId, session.orgId)));
 
   revalidatePath("/dsar/checklist");
+}
+
+// ---------------------------------------------------------------------------
+// Phase 7 (PRD §5.10) — connector fulfillment actions. See
+// src/lib/dsar/connector-fulfillment.ts for the search/approve/execute
+// orchestration itself; these are thin session-checked wrappers, same
+// pattern as every other action in this file.
+// ---------------------------------------------------------------------------
+
+export async function runFulfillmentSearchAction(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  if (!session) return;
+
+  const requestId = String(formData.get("requestId") || "");
+  const connectorId = String(formData.get("connectorId") || "") as ConnectorId;
+  if (!requestId || !connectorId) return;
+
+  await runFulfillmentSearch({
+    orgId: session.orgId,
+    requestId,
+    connectorId,
+    startedBy: session.userId,
+  });
+
+  revalidatePath(`/dsar/${requestId}`);
+}
+
+export async function decideMatchAction(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  if (!session) return;
+
+  const requestId = String(formData.get("requestId") || "");
+  const matchId = String(formData.get("matchId") || "");
+  const decision = String(formData.get("decision") || "") as "approved" | "rejected";
+  if (!requestId || !matchId || (decision !== "approved" && decision !== "rejected")) return;
+
+  const result = await decideMatch({
+    orgId: session.orgId,
+    matchId,
+    decision,
+    decidedBy: session.userId,
+  });
+
+  if (!result.ok) {
+    await logEvent({
+      requestId,
+      orgId: session.orgId,
+      eventType: "fulfillment_approval_blocked",
+      detail: result.errorDetail || "Approval blocked.",
+      actorId: session.userId,
+    });
+  }
+
+  revalidatePath(`/dsar/${requestId}`);
+}
+
+export async function executeApprovedMatchesAction(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  if (!session) return;
+
+  const requestId = String(formData.get("requestId") || "");
+  const runId = String(formData.get("runId") || "");
+  if (!requestId || !runId) return;
+
+  await executeApprovedMatches({ orgId: session.orgId, runId, executedBy: session.userId });
+
+  revalidatePath(`/dsar/${requestId}`);
 }

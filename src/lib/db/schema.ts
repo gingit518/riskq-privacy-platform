@@ -585,3 +585,176 @@ export const trackingTechnologies = pgTable("tracking_technologies", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------------------
+// Phase 7 (PRD §5.10/§7) — Assisted DSAR Fulfillment, design pass built
+// 2026-09-12 per Ariel's "move to Phase 7" call (skipping Phase 6 for now).
+// This is the first phase in the project that writes to systems outside our
+// own database, so it gets a materially more cautious design than anything
+// before it:
+//
+// - V1 connectors are Salesforce, M365, and Google Drive (Ariel's explicit
+//   priority call, 2026-09-12), each implementing the same narrow interface
+//   (search/export/delete — NOT correct; see connectors/types.ts for why
+//   "correct" is deferred).
+// - V1 identity resolution is exact-match on requester email only, case
+//   insensitive — no fuzzy/name/customer-ID matching. The PRD itself flags
+//   false positives here as a data-loss risk; a missed record (false
+//   negative) is a compliance gap a human can catch on review, a wrongly
+//   deleted record is not reversible.
+// - V1 search scope is narrow per connector, Ariel's explicit call: SF
+//   Contacts/Leads only (not Cases/Opportunities), M365 Outlook mail only
+//   (not SharePoint/Teams), Google Drive file METADATA only (not file
+//   content search). See README for what this misses.
+// - A permanent human-approval gate sits between "search found this" and
+//   "action executed" — every matched record is reviewed and individually
+//   approved/rejected before export or delete runs on it. This is a design
+//   constraint per PRD §7, not a V1 training-wheel to remove later.
+// - A delete is hard-blocked (no override) if the requester's email matches
+//   an active legalHolds row — reuses the existing Phase 3.1 lookup
+//   (findActiveLegalHold), same case-insensitive exact-email match. Export
+//   is NOT blocked by a hold (access/portability can proceed; deletion is
+//   the irreversible one). Ariel's explicit call: hard block, no override.
+// - Every connector API call is logged append-only to dsar_connector_events,
+//   independent of and in addition to the general dsar_events audit trail,
+//   satisfying §5.10's "immutable execution log" requirement specifically.
+// - No credentials for any real provider exist yet — OAuth app registration
+//   (Salesforce Connected App, Azure/Entra app, Google Cloud OAuth client)
+//   for THIS product has not been confirmed done as of this build (Ariel
+//   was checking as of 2026-09-12). connectors/mock.ts stands in for all
+//   three so the full schema/approval-gate/execution-log flow is buildable
+//   and reviewable now; connectors/salesforce.ts, m365.ts, google-drive.ts
+//   are stubs that throw "not configured" until real OAuth credentials are
+//   wired in (see README "Phase 7 — what's real vs. stubbed").
+// - No background job queue exists in this project — execution is
+//   synchronous inside one request/action call, capped at
+//   MAX_RECORDS_PER_RUN (see connectors/config.ts) per connector per run.
+//   Fine for a design partner's DSAR volume; a real scale constraint if a
+//   customer's Salesforce search returns thousands of matches — flagged in
+//   README, not silently handled.
+// ---------------------------------------------------------------------------
+
+export const connectorIdEnum = pgEnum("connector_id", ["salesforce", "m365", "google_drive"]);
+export const connectorRunStatusEnum = pgEnum("connector_run_status", [
+  "searching",
+  "awaiting_approval",
+  "executing",
+  "completed",
+  "failed",
+]);
+export const connectorMatchActionEnum = pgEnum("connector_match_action", ["export", "delete"]);
+export const connectorMatchDecisionEnum = pgEnum("connector_match_decision", [
+  "pending",
+  "approved",
+  "rejected",
+]);
+export const connectorMatchResultEnum = pgEnum("connector_match_result", [
+  "pending",
+  "succeeded",
+  "failed",
+  "blocked_legal_hold",
+]);
+
+// One row per org per provider — the OAuth connection itself. refreshToken
+// is encrypted at rest (see connectors/crypto.ts, new infra — nothing else
+// in this app stores a third-party secret; Resend/Blob tokens are RiskQ's
+// own env vars, not per-customer). Never logged, never returned to the
+// client — server-side reads only, immediately before a token refresh call.
+export const connectorConnections = pgTable("connector_connections", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  connectorId: connectorIdEnum("connector_id").notNull(),
+  // Provider-side account/org label (e.g. Salesforce org name, M365 tenant
+  // domain) — display only, so staff can confirm which real account is
+  // connected without decrypting anything.
+  accountLabel: text("account_label").notNull().default(""),
+  encryptedRefreshToken: text("encrypted_refresh_token").notNull(),
+  connectedBy: uuid("connected_by").notNull().references(() => users.id),
+  connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
+  // Disconnected, not deleted — same active/retire convention as
+  // dsar_systems/legal_holds/tracking_technologies. A disconnected
+  // connection can't be used for a new run but its past runs/matches/events
+  // stay intact for audit purposes.
+  active: boolean("active").notNull().default(true),
+}, (table) => ({
+  orgConnectorIdx: uniqueIndex("connector_connections_org_connector_idx").on(
+    table.orgId,
+    table.connectorId
+  ),
+}));
+
+// One row per (DSAR request, connector) search attempt. A request can have
+// multiple runs over time (e.g. re-run after connecting a new system) —
+// never overwritten, each run is its own record.
+export const dsarConnectorRuns = pgTable("dsar_connector_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  requestId: uuid("request_id").notNull().references(() => dsarRequests.id, { onDelete: "cascade" }),
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  connectorId: connectorIdEnum("connector_id").notNull(),
+  status: connectorRunStatusEnum("status").notNull().default("searching"),
+  errorDetail: text("error_detail").notNull().default(""),
+  startedBy: uuid("started_by").notNull().references(() => users.id),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+});
+
+// One row per matched external record — the approval-gate object itself.
+// snapshot is a small jsonb display payload (object type, a name/email/
+// subject line, provider record id) — enough for a human to recognize the
+// record, deliberately NOT the full external record (no reason to pull and
+// store a customer's entire Salesforce Contact into our own database just
+// to render a review list).
+export const dsarConnectorMatches = pgTable("dsar_connector_matches", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  runId: uuid("run_id").notNull().references(() => dsarConnectorRuns.id, { onDelete: "cascade" }),
+  requestId: uuid("request_id").notNull().references(() => dsarRequests.id, { onDelete: "cascade" }),
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  connectorId: connectorIdEnum("connector_id").notNull(),
+  externalObjectType: text("external_object_type").notNull(),
+  externalRecordId: text("external_record_id").notNull(),
+  snapshot: jsonb("snapshot").notNull(),
+  requestedAction: connectorMatchActionEnum("requested_action").notNull().default("export"),
+  decision: connectorMatchDecisionEnum("decision").notNull().default("pending"),
+  decidedBy: uuid("decided_by").references(() => users.id),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  result: connectorMatchResultEnum("result").notNull().default("pending"),
+  resultDetail: text("result_detail").notNull().default(""),
+  executedAt: timestamp("executed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Append-only, independent of dsar_events — every real or attempted call to
+// a connected external system, satisfying §5.10's "immutable execution log"
+// requirement specifically (not just the general DSAR audit trail, which
+// this ALSO still writes to via the usual logEvent() calls). detail is a
+// summary (action, record count, outcome) — never the record payload
+// itself, same minimization stance as dsarConnectorMatches.snapshot.
+export const dsarConnectorEvents = pgTable("dsar_connector_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  requestId: uuid("request_id").notNull().references(() => dsarRequests.id, { onDelete: "cascade" }),
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  connectorId: connectorIdEnum("connector_id").notNull(),
+  eventType: text("event_type").notNull(),
+  detail: text("detail").notNull().default(""),
+  actorId: uuid("actor_id").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Lightweight sub-processor list per org (§5.10's GDPR Art. 17(2)-style
+// notification requirement) — explicitly NOT a vendor/TPRM assessment
+// (those stay excluded per PRD §4/§10). Just enough to know who to notify
+// when a deletion executes: name, contact, and what categories of data they
+// receive. Notification itself is a manual action in V1 (a copy-ready
+// template, same posture as DSAR response templates pre-Phase-3.1) — no
+// automated send, since that would need a verified fact about what this
+// specific processor actually received, which nothing here tracks.
+export const subProcessors = pgTable("sub_processors", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  contactEmail: text("contact_email").notNull().default(""),
+  dataCategories: text("data_categories").notNull().default(""),
+  active: boolean("active").notNull().default(true),
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
