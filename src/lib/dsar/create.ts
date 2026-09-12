@@ -9,6 +9,7 @@ import { dsarRequests, dsarEvents } from "@/lib/db/schema";
 import { getInScopeRegulationMetadata } from "@/lib/scope";
 import { pickGoverningRegulation, computeDueDate } from "./sla";
 import { snapshotChecklistForRequest } from "./checklist";
+import { fanOutSystemTasks } from "./systems";
 import type { DsarRequestType } from "./types";
 
 export interface CreateDsarRequestParams {
@@ -45,6 +46,7 @@ export async function createDsarRequest(params: CreateDsarRequestParams): Promis
     .returning({ id: dsarRequests.id });
 
   await snapshotChecklistForRequest(row.id, params.orgId, params.requestType);
+  await fanOutSystemTasks(params.orgId, row.id);
 
   await db.insert(dsarEvents).values({
     requestId: row.id,

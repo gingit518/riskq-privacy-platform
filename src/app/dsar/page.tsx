@@ -55,6 +55,12 @@ export default async function DsarDashboardPage() {
             <Link href="/dsar/checklist" style={{ marginRight: 16 }}>
               Checklist settings
             </Link>
+            <Link href="/dsar/systems" style={{ marginRight: 16 }}>
+              Systems Register
+            </Link>
+            <Link href="/dsar/legal-holds" style={{ marginRight: 16 }}>
+              Legal Holds
+            </Link>
             <Link href="/dsar/new">Log a request</Link>
           </div>
         </div>

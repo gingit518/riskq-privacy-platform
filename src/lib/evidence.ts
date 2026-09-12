@@ -12,7 +12,7 @@
 // error, not a silent no-op, if the token is missing — same philosophy as
 // getDb()/getSecret() elsewhere in this codebase).
 
-import { put } from "@vercel/blob";
+import { put, get as blobGet } from "@vercel/blob";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { evidenceFiles } from "@/lib/db/schema";
@@ -27,16 +27,17 @@ export interface UploadEvidenceParams {
   file: File;
   obligationId?: string;
   controlId?: string;
+  dsarRequestId?: string;
 }
 
 export async function uploadEvidence(params: UploadEvidenceParams): Promise<void> {
-  const { orgId, uploadedBy, file, obligationId, controlId } = params;
+  const { orgId, uploadedBy, file, obligationId, controlId, dsarRequestId } = params;
 
-  if (!obligationId && !controlId) {
-    throw new Error("uploadEvidence requires exactly one of obligationId or controlId.");
-  }
-  if (obligationId && controlId) {
-    throw new Error("uploadEvidence requires exactly one of obligationId or controlId, not both.");
+  const targetCount = [obligationId, controlId, dsarRequestId].filter(Boolean).length;
+  if (targetCount !== 1) {
+    throw new Error(
+      "uploadEvidence requires exactly one of obligationId, controlId, or dsarRequestId."
+    );
   }
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
     throw new Error(
@@ -54,17 +55,23 @@ export async function uploadEvidence(params: UploadEvidenceParams): Promise<void
     );
   }
 
-  // Path namespaced by org so evidence for different tenants can't collide
-  // or be guessed from a URL pattern — Blob URLs are unlisted/unguessable
-  // random-suffixed by default, but this adds a second layer for free.
-  const path = `evidence/${orgId}/${obligationId ?? controlId}/${Date.now()}-${file.name}`;
-  const blob = await put(path, file, { access: "public" });
+  // DSAR export files are PRIVATE — they're compiled data destined to leave
+  // the org via the requester's emailed, token-gated download link, so they
+  // get the stricter posture (see schema.ts evidence_files.isPrivate).
+  // Obligation/control evidence stays public, as before — it never leaves
+  // the app, and public blobs are simpler to just link to directly.
+  const isPrivate = Boolean(dsarRequestId);
+  const targetId = obligationId ?? controlId ?? dsarRequestId;
+  const path = `evidence/${orgId}/${targetId}/${Date.now()}-${file.name}`;
+  const blob = await put(path, file, { access: isPrivate ? "private" : "public" });
 
   const db = getDb();
   await db.insert(evidenceFiles).values({
     orgId,
     obligationId: obligationId ?? null,
     controlId: controlId ?? null,
+    dsarRequestId: dsarRequestId ?? null,
+    isPrivate,
     fileName: file.name,
     blobUrl: blob.url,
     contentType: file.type || "application/octet-stream",
@@ -98,4 +105,34 @@ export async function listEvidenceForControls(orgId: string, controlIds: string[
     .orderBy(desc(evidenceFiles.uploadedAt));
   const wanted = new Set(controlIds);
   return rows.filter((r) => r.controlId && wanted.has(r.controlId));
+}
+
+export async function listEvidenceForDsarRequest(orgId: string, requestId: string) {
+  const db = getDb();
+  return db
+    .select()
+    .from(evidenceFiles)
+    .where(and(eq(evidenceFiles.orgId, orgId), eq(evidenceFiles.dsarRequestId, requestId)))
+    .orderBy(desc(evidenceFiles.uploadedAt));
+}
+
+/** Streams a PRIVATE DSAR evidence blob's bytes server-side, using the
+ * BLOB_READ_WRITE_TOKEN — this is the only way to read it, since it has no
+ * separately-fetchable public URL. Used by the token-gated download route,
+ * never called from a client component. Throws if the row isn't actually
+ * private (defensive — should never happen given uploadEvidence above). */
+export async function fetchPrivateEvidenceBlob(fileRow: {
+  isPrivate: boolean;
+  blobUrl: string;
+  contentType: string;
+  fileName: string;
+}) {
+  if (!fileRow.isPrivate) {
+    throw new Error("fetchPrivateEvidenceBlob called on a non-private evidence row.");
+  }
+  const result = await blobGet(fileRow.blobUrl, { access: "private" });
+  if (!result || result.statusCode !== 200) {
+    throw new Error("Evidence file not found in Blob storage.");
+  }
+  return result;
 }

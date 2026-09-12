@@ -2,7 +2,7 @@
   "name": "riskq-privacy-platform",
   "version": "0.1.0",
   "private": true,
-  "description": "RiskQ Privacy Compliance Platform — multi-tenant regulatory scoping, business obligations, cyber controls, and DSAR (Phase 1+2+3).",
+  "description": "RiskQ Privacy Compliance Platform — multi-tenant regulatory scoping, business obligations, cyber controls, and DSAR with fulfillment automation (Phase 1+2+3+3.1).",
   "type": "module",
   "scripts": {
     "dev": "next dev",
@@ -22,6 +22,7 @@
     "postgres": "3.4.4",
     "react": "18.3.1",
     "react-dom": "18.3.1",
+    "resend": "6.28.0",
     "zod": "3.23.8"
   },
   "devDependencies": {

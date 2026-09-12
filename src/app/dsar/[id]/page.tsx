@@ -14,9 +14,20 @@ import {
   completionTemplate,
   denialTemplate,
 } from "@/lib/dsar/templates";
-import { updateDsarStatus, verifyIdentity, toggleChecklistItem } from "../actions";
+import { findActiveLegalHold } from "@/lib/dsar/legal-holds";
+import { listSystemTasks } from "@/lib/dsar/systems";
+import { listEvidenceForDsarRequest } from "@/lib/evidence";
+import {
+  updateDsarStatus,
+  verifyIdentity,
+  toggleChecklistItem,
+  toggleSystemTask,
+  uploadDsarEvidence,
+  sendDsarResponse,
+} from "../actions";
 import ResponseTemplates from "@/components/ResponseTemplates";
 import DsarChecklist from "@/components/DsarChecklist";
+import SystemTasks from "@/components/SystemTasks";
 
 function fmtDateTime(d: Date | string | null): string {
   if (!d) return "—";
@@ -50,6 +61,10 @@ export default async function DsarRequestDetailPage({ params }: { params: { id: 
     .where(eq(dsarEvents.requestId, request.id))
     .orderBy(desc(dsarEvents.createdAt));
 
+  const legalHold = await findActiveLegalHold(session.orgId, request.requesterEmail);
+  const systemTasks = await listSystemTasks(session.orgId, request.id);
+  const attachedFiles = await listEvidenceForDsarRequest(session.orgId, request.id);
+
   const dueDateText = request.slaDueAt ? fmtDateTime(request.slaDueAt) : "";
 
   const templates = {
@@ -63,6 +78,7 @@ export default async function DsarRequestDetailPage({ params }: { params: { id: 
       requesterName: request.requesterName,
       orgName,
       requestType: request.requestType,
+      downloadLink: '(a secure link will be generated when you click "Send response" below)',
     }),
     denial: denialTemplate({
       requesterName: request.requesterName,
@@ -77,6 +93,24 @@ export default async function DsarRequestDetailPage({ params }: { params: { id: 
       <main style={{ maxWidth: 800, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
         <h1>{request.requesterName}</h1>
         <p style={{ color: "#666" }}>{request.requesterEmail}</p>
+
+        {legalHold && (
+          <div
+            style={{
+              background: "#fff3cd",
+              border: "1px solid #ffe58f",
+              borderRadius: 4,
+              padding: 12,
+              marginBottom: 16,
+            }}
+          >
+            <strong>⚠ Active legal hold matches this requester.</strong>{" "}
+            {legalHold.matter || "No matter description on file."} — review before
+            responding (see <a href="/dsar/legal-holds">Legal Holds</a>). This is a
+            flag, not a block; whether it justifies withholding data is a legal
+            judgment call.
+          </div>
+        )}
 
         <table style={{ marginBottom: 24 }}>
           <tbody>
@@ -156,6 +190,50 @@ export default async function DsarRequestDetailPage({ params }: { params: { id: 
 
         <h2>Checklist</h2>
         <DsarChecklist requestId={request.id} items={checklist} toggleAction={toggleChecklistItem} />
+
+        <h2>
+          Systems to check (<a href="/dsar/systems">manage register</a>)
+        </h2>
+        <SystemTasks requestId={request.id} tasks={systemTasks} toggleAction={toggleSystemTask} />
+
+        <h2>Compiled export / evidence files</h2>
+        <p style={{ color: "#666", fontSize: 13 }}>
+          Attach the file(s) the response should deliver. Stored as a private
+          file — not a public link — readable only through the emailed,
+          expiring download link below.
+        </p>
+        {attachedFiles.length > 0 && (
+          <ul style={{ fontSize: 14 }}>
+            {attachedFiles.map((f) => (
+              <li key={f.id}>
+                {f.fileName} — {(f.sizeBytes / 1024).toFixed(0)}KB, uploaded{" "}
+                {fmtDateTime(f.uploadedAt)}
+              </li>
+            ))}
+          </ul>
+        )}
+        <form
+          action={uploadDsarEvidence}
+          encType="multipart/form-data"
+          style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 24 }}
+        >
+          <input type="hidden" name="requestId" value={request.id} />
+          <input type="file" name="file" required />
+          <button type="submit">Attach file</button>
+        </form>
+
+        <h2>Send response</h2>
+        <p style={{ color: "#666", fontSize: 13 }}>
+          Emails the completion template below to {request.requesterEmail}. If
+          file(s) are attached above, a secure, expiring (7-day) download
+          link is generated and included automatically. This does not change
+          the request&apos;s status — set that explicitly above once you
+          confirm the response went out.
+        </p>
+        <form action={sendDsarResponse} style={{ marginBottom: 24 }}>
+          <input type="hidden" name="requestId" value={request.id} />
+          <button type="submit">Send response now</button>
+        </form>
 
         <ResponseTemplates templates={templates} />
 

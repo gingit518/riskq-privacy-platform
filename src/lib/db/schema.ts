@@ -185,17 +185,24 @@ export const orgControls = pgTable("org_controls", {
 // pointer. Deliberately append-only / no delete action exposed in the UI —
 // same audit-trail philosophy as org_obligations and org_profiles: an
 // auditor needs to see everything that was ever uploaded, not just the
-// current state. Exactly one of obligationId/controlId should be set; this
-// isn't a DB-level CHECK constraint (kept simple given the current Drizzle
-// Kit version in use), just an application-level rule enforced in
-// evidence/actions.ts — flagging so a future direct-DB write doesn't violate
-// it silently.
+// current state. Exactly one of obligationId/controlId/dsarRequestId should
+// be set; this isn't a DB-level CHECK constraint (kept simple given the
+// current Drizzle Kit version in use), just an application-level rule
+// enforced in evidence.ts — flagging so a future direct-DB write doesn't
+// violate it silently.
 //
 // controlId points at controls_library.id, NOT org_controls.id: an
 // org_controls row is only created lazily on first status save (see
 // updateControlStatus in controls/actions.ts), but you should be able to
 // attach evidence to a control before ever touching its status. orgId still
 // scopes the row to a tenant.
+//
+// dsarRequestId (Phase 3.1 fulfillment automation, 2026-09-12) rows use
+// PRIVATE Blob storage instead of PUBLIC like the obligation/control case
+// above — see the isPrivate column below. DSAR export files are compiled
+// data destined to leave the org via the requester's response link, so they
+// get the stricter posture; obligation/control evidence never leaves the
+// app.
 // ---------------------------------------------------------------------------
 // Phase 3 (PRD §8) — Data Subject Access Rights / DSAR (§5.3).
 //
@@ -298,10 +305,102 @@ export const evidenceFiles = pgTable("evidence_files", {
   orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
   obligationId: uuid("obligation_id").references(() => orgObligations.id, { onDelete: "cascade" }),
   controlId: uuid("control_id").references(() => controlsLibrary.id),
+  dsarRequestId: uuid("dsar_request_id").references(() => dsarRequests.id, { onDelete: "cascade" }),
   fileName: text("file_name").notNull(),
+  // blobUrl is the Vercel Blob pathname/URL either way. For DSAR rows
+  // (isPrivate = true) it is NOT directly fetchable by a browser — reading
+  // it requires the server's BLOB_READ_WRITE_TOKEN via @vercel/blob's
+  // get(), which is exactly what /dsar/download/[token] does after
+  // validating the token. Obligation/control rows keep isPrivate = false
+  // (public blob, as before) since that evidence never leaves the app.
   blobUrl: text("blob_url").notNull(),
+  isPrivate: boolean("is_private").notNull().default(false),
   contentType: text("content_type").notNull().default("application/octet-stream"),
   sizeBytes: integer("size_bytes").notNull().default(0),
   uploadedBy: uuid("uploaded_by").notNull().references(() => users.id),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------------------
+// Phase 3.1 (2026-09-12) — DSAR fulfillment automation, per Ariel's checklist
+// review of the default `access` template (checklist-defaults.ts). Adds the
+// pieces that turn "locate systems / review legal holds / send response"
+// from bare checkboxes into tracked, assignable, auditable actions. See
+// README "Phase 3.1" section for what is and isn't automated and why.
+// ---------------------------------------------------------------------------
+
+// Org-maintained registry of systems that may hold personal data, each with
+// an owner to notify. Not tenant content synced from anywhere (unlike
+// controls_library) — every org's stack is different, so this is manual
+// setup, once, per org (see /dsar/systems). `active` lets an org retire a
+// system without losing the historical fan-out tasks that already reference
+// it (see dsar_system_tasks' snapshot columns below).
+export const dsarSystems = pgTable("dsar_systems", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  ownerName: text("owner_name").notNull().default(""),
+  ownerEmail: text("owner_email").notNull().default(""),
+  dataCategories: text("data_categories").notNull().default(""),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// One row per (request, system-at-time-of-creation) — auto-fanned-out when a
+// DSAR request is created (see createDsarRequest / fanOutSystemTasks), one
+// per currently-active dsar_systems row. Snapshots systemName/ownerName/
+// ownerEmail as plain text rather than joining live to dsar_systems, same
+// audit-trail-over-live-recompute rule as everything else in this schema:
+// editing or retiring a system later must never rewrite what an
+// already-open request's task list says.
+export const dsarSystemTasks = pgTable("dsar_system_tasks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  requestId: uuid("request_id").notNull().references(() => dsarRequests.id, { onDelete: "cascade" }),
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  systemName: text("system_name").notNull(),
+  ownerName: text("owner_name").notNull().default(""),
+  ownerEmail: text("owner_email").notNull().default(""),
+  done: boolean("done").notNull().default(false),
+  doneAt: timestamp("done_at", { withTimezone: true }),
+  doneBy: uuid("done_by").references(() => users.id),
+  notes: text("notes").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Org-maintained list of names/emails under an active legal hold or
+// litigation matter. Checked live (not snapshotted) against a requester's
+// email every time a DSAR detail page renders — deliberately NOT
+// snapshotted at request creation like governingRegulation/checklist above,
+// because a hold can be placed AFTER intake but before the response goes
+// out, and a stale snapshot would miss that. Informational flag only; it
+// does not block any action — the review is still a human legal judgment
+// call (see README Known Gaps).
+export const legalHolds = pgTable("legal_holds", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  subjectName: text("subject_name").notNull().default(""),
+  subjectEmail: text("subject_email").notNull(),
+  matter: text("matter").notNull().default(""),
+  active: boolean("active").notNull().default(true),
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Short-lived tokens that gate the public /dsar/download/[token] page sent
+// to a requester by email. The token+expiry is the actual access control —
+// the underlying files are PRIVATE Vercel blobs (see evidence_files.isPrivate
+// above), so knowing this token is the only way to read them; there is no
+// separately-guessable public blob URL to leak. Not single-use (a requester
+// may need to re-open the email and re-download) — expiry alone is the
+// control. No delete/rotate UI in V1; an org that needs to revoke early
+// would do it by hand in the DB, which is a known gap, not silently ignored.
+export const dsarDownloadTokens = pgTable("dsar_download_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  requestId: uuid("request_id").notNull().references(() => dsarRequests.id, { onDelete: "cascade" }),
+  token: text("token").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  tokenIdx: uniqueIndex("dsar_download_tokens_token_idx").on(table.token),
+}));

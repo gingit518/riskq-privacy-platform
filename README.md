@@ -1,13 +1,16 @@
-# RiskQ Privacy Compliance Platform — Phase 1 + 2 + 3 scaffold
+# RiskQ Privacy Compliance Platform — Phase 1 + 2 + 3 + 3.1 scaffold
 
 Multi-tenant SaaS privacy compliance platform. Phase 1 = Regulatory
 Management, the module every other module (Business Obligations, DSAR,
 Cyber Controls, Assessments, International Transfers, Tracking Technologies)
 derives scope from. Phase 2 = Business Obligations + Cyber Controls, wired to
 that scope. Phase 3 = Data Subject Access Rights (DSAR), also wired to that
-scope. See the PRD (`PRD-Privacy-Application.md` in the Privacy Development
-project) for the full product spec — this README covers only what's needed
-to run and extend this codebase.
+scope. Phase 3.1 = DSAR fulfillment automation — turning the default
+fulfillment checklist's line items into tracked/assigned/auditable actions
+where that's honestly possible (see "What's built (Phase 3.1)" for what
+is and isn't). See the PRD (`PRD-Privacy-Application.md` in the Privacy
+Development project) for the full product spec — this README covers only
+what's needed to run and extend this codebase.
 
 ## What's built (Phase 1)
 
@@ -113,13 +116,74 @@ to run and extend this codebase.
   compiler requires every export there to be a locally-defined async
   function).
 
+## What's built (Phase 3.1)
+
+Built 2026-09-12 after Ariel reviewed the default `access` checklist
+(`checklist-defaults.ts`) and asked which of its 7 line items could actually
+be automated. Honest answer, item by item, drove what got built:
+
+- **Systems Register** (`dsar_systems`, `dsar_system_tasks`, `/dsar/systems`)
+  — turns "locate all systems/records containing the requester's data" from
+  one vague checklist line into per-system assigned tasks. This does **not**
+  search anything — there's no generic way to query an arbitrary customer's
+  CRM/database/email tool without a connector to each one specifically. What
+  it automates is the fan-out: every active registered system gets its own
+  tracked task, snapshotted onto the request at creation time (editing/
+  retiring a system later never rewrites an already-open request's task
+  list, same audit-trail rule as everything else here).
+- **Legal Holds** (`legal_holds`, `/dsar/legal-holds`) — a simple registry,
+  checked **live** (not snapshotted) against the requester's email every
+  time a request's detail page renders, since a hold can be placed after
+  intake but before the response ships. Flags a match with the matter
+  description; does not block anything — whether it justifies withholding
+  data stays a human legal call.
+- **DSAR evidence/export attachment** (`evidence_files.dsar_request_id`,
+  upload form on `/dsar/[id]`) — reuses the Phase 2 evidence-upload
+  plumbing so a compiled export can be attached directly to a request.
+  Stored as a **private** Vercel blob (`isPrivate` column), unlike
+  Obligations/Controls evidence — this data is meant to leave the org via
+  the requester's response, so it gets the stricter posture: there is no
+  separately-guessable public URL for it at all, only server-side reads via
+  `BLOB_READ_WRITE_TOKEN`.
+- **Send response** (`sendDsarResponse` in `dsar/actions.ts`, via Resend) —
+  one click emails the completion template to the requester. If file(s) are
+  attached, a random, expiring (7-day) download token is generated
+  (`dsar_download_tokens`) and its link is baked into the email; the public,
+  unauthenticated `/dsar/download/[token]` page (mirrors `/intake/[slug]`'s
+  no-`requireSession()` pattern) lists the attached files, each served by
+  `/dsar/download/[token]/file/[fileId]`, which re-validates the token on
+  every request and streams the private blob server-side — the token is the
+  entire access control, not a wrapper around an already-public link.
+  Deliberately does **not** auto-transition the request's status to
+  "completed" — sending a response and closing the request are related but
+  distinct actions (a partial response may still need follow-up), so status
+  stays an explicit staff decision.
+- **Checklist-toggle audit logging fix** — `toggleChecklistItem` previously
+  wrote no `dsar_events` row at all, inconsistent with every other material
+  action in this module. Now logs `checklist_item_toggled`.
+- **Explicitly deferred, per Ariel's call (2026-09-12):**
+  - *Automated identity-proofing* (document/selfie verification via a
+    vendor like Persona/Stripe Identity) — the existing manual
+    staff-attestation button stays as-is; full proofing is a discrete
+    future integration if a customer requires it.
+  - *PII-detection pass on uploaded files* — would only ever be a
+    highlighting aid for a human reviewer (never an auto-redactor — a false
+    negative leaks someone else's PII, a false positive withholds data you
+    owed), and isn't worth the added vendor dependency until a customer
+    asks.
+  - *Statutory exemption review* stays a pure human legal judgment call —
+    no attempt to encode "does this regulation have an exemption" logic.
+
 ## What's NOT built yet
 
 Assessments (DPIA/PIA, readiness/maturity, RoPA — **not** vendor/TPRM, which
 is explicitly out of scope for this product per Ariel's instruction),
-International Transfers, Tracking Technologies/CMP (scoped in PRD §5.9), and
-Automated DSAR fulfillment (scoped in PRD §5.10). Those are later phases per
-the PRD roadmap (§8).
+International Transfers, and Tracking Technologies/CMP (scoped in PRD §5.9).
+Those are later phases per the PRD roadmap (§8). Automated DSAR fulfillment
+(PRD §5.10) is now partially built — see "What's built (Phase 3.1)" — the
+pieces that are genuinely automatable (systems fan-out, legal-hold lookup,
+export attachment, response send) are done; identity-proofing and
+auto-redaction are deliberately not, per the reasoning in that section.
 
 ## Setup required before this deploys
 
@@ -145,11 +209,23 @@ the PRD roadmap (§8).
    respective content on first use — but running it explicitly after a
    content change is still good practice.
 5. **`BLOB_READ_WRITE_TOKEN`** — required for evidence uploads on
-   `/obligations` and `/controls` (nothing else uses it). Vercel → Storage →
+   `/obligations`, `/controls`, and `/dsar`. Vercel → Storage →
    Create Database → Blob → connect it to this project, same flow as the
    Neon Postgres setup above; the token auto-injects once connected. Without
    it, evidence upload throws a clear error naming this step — it doesn't
    fail silently, and nothing else in the app depends on it.
+6. **`RESEND_API_KEY`** — required for the "Send response now" button on a
+   DSAR request (Phase 3.1). Create a free account at resend.com, generate
+   an API key, add it to Vercel's Environment Variables. Without it,
+   sending throws a clear error naming this step.
+7. **`EMAIL_FROM`** — the sending address for DSAR response emails. Must be
+   on a domain verified in Resend for real deliverability; unset falls back
+   to Resend's sandbox `onboarding@resend.dev`, which only delivers to the
+   Resend account owner's own inbox — fine for testing, not for real
+   requesters.
+8. **`APP_BASE_URL`** — your production URL, used to build the absolute
+   download link emailed to requesters. Falls back to Vercel's
+   auto-injected `VERCEL_URL` if unset; set it explicitly to be sure.
 
 Copy `.env.example` to `.env.local` for local dev.
 
@@ -242,6 +318,21 @@ Copy `.env.example` to `.env.local` for local dev.
 - **Checklist template items can't be reordered** — new items append at the
   end (`/dsar/checklist`); removing and re-adding is the only way to
   resequence for now.
+- **No rate limiting on the public intake form** note above is now slightly
+  incomplete: a submission still triggers no email itself, but a *staff
+  member's* subsequent "Send response now" click does send real email via
+  Resend — cost/abuse exposure is on the staff action, not the public form,
+  but worth keeping in mind together.
+- **Download tokens can't be revoked or rotated from the UI.** They expire
+  after 7 days on their own (`dsar_download_tokens.expiresAt`), but if one
+  needs to be killed early (sent to the wrong address, compromised inbox),
+  that's a manual DB delete today, not an app feature.
+- **Systems Register is manual setup, not auto-discovered.** An org has to
+  know and list its own systems; nothing inspects their infrastructure.
+  Fan-out tasks are only as complete as that list.
+- **Legal hold matching is exact-email only** (case-insensitive) — no
+  fuzzy/name matching, so a hold entered under a different email address
+  than the one a requester submits with won't flag.
 
 ## Local development
 
