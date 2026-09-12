@@ -142,6 +142,22 @@ export const controlStatusEnum = pgEnum("control_status", [
   "implemented",
 ]);
 
+// Readiness/maturity scoring (PRD §5.5, added Phase 4, 2026-09-12) — a
+// deliberately separate dimension from `status` above: a control can be
+// "implemented" but ad hoc/inconsistent (low maturity) or "partial" but
+// well-governed where it does exist (higher maturity than status alone
+// implies). Per Ariel's explicit call, this reuses the existing NIST CSF
+// categories (controls_library) as the framework rather than authoring a
+// second, unvetted maturity rubric — no new content to source or caveat.
+export const maturityLevelEnum = pgEnum("maturity_level", [
+  "not_assessed",
+  "initial",
+  "developing",
+  "defined",
+  "managed",
+  "optimized",
+]);
+
 // Global reference library (not tenant-scoped) — analogous to regulation_sets:
 // a versioned content snapshot, seeded on first use rather than requiring a
 // separate seed step (see controls/actions.ts). See README / PRD Appendix A
@@ -170,6 +186,8 @@ export const orgControls = pgTable("org_controls", {
   orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
   controlId: uuid("control_id").notNull().references(() => controlsLibrary.id),
   status: controlStatusEnum("status").notNull().default("not_implemented"),
+  maturityLevel: maturityLevelEnum("maturity_level").notNull().default("not_assessed"),
+  maturityNotes: text("maturity_notes").notNull().default(""),
   evidenceNote: text("evidence_note").notNull().default(""),
   lastTestedAt: timestamp("last_tested_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -306,6 +324,7 @@ export const evidenceFiles = pgTable("evidence_files", {
   obligationId: uuid("obligation_id").references(() => orgObligations.id, { onDelete: "cascade" }),
   controlId: uuid("control_id").references(() => controlsLibrary.id),
   dsarRequestId: uuid("dsar_request_id").references(() => dsarRequests.id, { onDelete: "cascade" }),
+  transferId: uuid("transfer_id").references(() => internationalTransfers.id, { onDelete: "cascade" }),
   fileName: text("file_name").notNull(),
   // blobUrl is the Vercel Blob pathname/URL either way. For DSAR rows
   // (isPrivate = true) it is NOT directly fetchable by a browser — reading
@@ -404,3 +423,118 @@ export const dsarDownloadTokens = pgTable("dsar_download_tokens", {
 }, (table) => ({
   tokenIdx: uniqueIndex("dsar_download_tokens_token_idx").on(table.token),
 }));
+
+// ---------------------------------------------------------------------------
+// Phase 4 (PRD §5.5/§5.7/§8) — Assessments (RoPA, DPIA, readiness/maturity)
+// and International Transfers, built 2026-09-12. Per Ariel's explicit calls
+// that day: DPIA content is a generic GDPR Art. 35-style template (flagged
+// as a starting point, not legally reviewed — same caveat pattern as Cyber
+// Controls' NIST tagging); maturity scoring reuses the existing NIST CSF
+// categories (controls_library) rather than a new framework; and a
+// processing activity's "systems involved" field reuses the DSAR Systems
+// Register (dsar_systems) rather than a second, separately-maintained
+// systems list. That reuse means dsar_systems is no longer DSAR-only
+// despite its name — flagged in README rather than silently renaming a
+// table that already has live data from the Phase 3.1 rollout.
+// ---------------------------------------------------------------------------
+
+// Records of Processing Activities (RoPA) — the PRD's own recommendation
+// (§5.5) was to build this FIRST, before DPIA/Obligations/Transfers, as the
+// shared object those modules reference. Business Obligations (Phase 2)
+// already shipped without it, so this is new shared infrastructure for
+// DPIA and International Transfers only, not a retrofit onto Obligations —
+// flagged so that gap isn't assumed silently closed.
+export const processingActivities = pgTable("processing_activities", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  purpose: text("purpose").notNull().default(""),
+  dataCategories: jsonb("data_categories").$type<string[]>().notNull().default([]),
+  dataSubjects: text("data_subjects").notNull().default(""),
+  lawfulBasis: text("lawful_basis").notNull().default(""),
+  retentionPeriod: text("retention_period").notNull().default(""),
+  // Risk flags — PRD §5.5's explicit DPIA trigger criteria. Booleans, not a
+  // computed score: whether these add up to "do a DPIA" is left to the
+  // human reviewing the recommendation banner (see dpia.ts), not decided
+  // silently by this schema.
+  specialCategoryData: boolean("special_category_data").notNull().default(false),
+  largeScaleProcessing: boolean("large_scale_processing").notNull().default(false),
+  automatedDecisionMaking: boolean("automated_decision_making").notNull().default(false),
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Many-to-many: which registered systems (dsar_systems — see header comment
+// above on the reuse decision) hold data for this processing activity. A
+// join table rather than a jsonb array of ids, consistent with how this
+// schema always uses a real FK table for actual relationships (jsonb here
+// is reserved for genuinely unstructured lists like org_profiles.states).
+export const processingActivitySystems = pgTable("processing_activity_systems", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  activityId: uuid("activity_id").notNull().references(() => processingActivities.id, { onDelete: "cascade" }),
+  systemId: uuid("system_id").notNull().references(() => dsarSystems.id, { onDelete: "cascade" }),
+}, (table) => ({
+  dedupeIdx: uniqueIndex("processing_activity_systems_dedupe_idx").on(table.activityId, table.systemId),
+}));
+
+export const dpiaStatusEnum = pgEnum("dpia_status", ["draft", "completed"]);
+export const dpiaRiskRatingEnum = pgEnum("dpia_risk_rating", ["low", "medium", "high"]);
+
+// One DPIA per processing activity (V1 — not versioned/append-only like the
+// rest of this schema; a DPIA is treated as a living document until marked
+// "completed", not a point-in-time audit record). Question set is a static
+// generic GDPR Art. 35-style template (src/lib/assessments/dpia-questions.ts),
+// explicitly NOT legally reviewed — same unverified-content caveat as
+// regulation_sets/controls_library elsewhere in this app (PRD §9 item 3).
+export const dpiaAssessments = pgTable("dpia_assessments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  activityId: uuid("activity_id").notNull().references(() => processingActivities.id, { onDelete: "cascade" }),
+  status: dpiaStatusEnum("status").notNull().default("draft"),
+  // { [questionId]: answerText }, not a rigid column-per-question — the
+  // question set (dpia-questions.ts) is expected to evolve and this avoids
+  // a migration every time it does. Same modeling choice as
+  // org_regulation_scope.results.
+  answers: jsonb("answers").$type<Record<string, string>>().notNull().default({}),
+  riskRating: dpiaRiskRatingEnum("risk_rating"),
+  mitigations: text("mitigations").notNull().default(""),
+  completedBy: uuid("completed_by").references(() => users.id),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  // One DPIA per activity in V1 — re-opening an existing one edits it in
+  // place rather than creating a second row.
+  activityIdx: uniqueIndex("dpia_assessments_activity_idx").on(table.activityId),
+}));
+
+export const transferMechanismEnum = pgEnum("transfer_mechanism", [
+  "sccs",
+  "adequacy_decision",
+  "bcrs",
+  "derogation",
+  "none",
+]);
+export const tiaStatusEnum = pgEnum("tia_status", ["not_started", "in_progress", "complete", "not_required"]);
+
+// International Transfers registry (PRD §5.7). Optionally linked to a
+// processing activity (RoPA) per the PRD's design, but not required — an
+// org may log a transfer before it's finished mapping every processing
+// activity, and forcing the link would block that. mechanism = 'none' is
+// the explicit "gap" state the PRD asks to alert on (see /transfers page),
+// not an omitted field.
+export const internationalTransfers = pgTable("international_transfers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id").notNull().references(() => orgs.id, { onDelete: "cascade" }),
+  activityId: uuid("activity_id").references(() => processingActivities.id, { onDelete: "set null" }),
+  fromJurisdiction: text("from_jurisdiction").notNull(),
+  toJurisdiction: text("to_jurisdiction").notNull(),
+  mechanism: transferMechanismEnum("mechanism").notNull().default("none"),
+  tiaStatus: tiaStatusEnum("tia_status").notNull().default("not_started"),
+  notes: text("notes").notNull().default(""),
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

@@ -2,7 +2,7 @@
   "name": "riskq-privacy-platform",
   "version": "0.1.0",
   "private": true,
-  "description": "RiskQ Privacy Compliance Platform — multi-tenant regulatory scoping, business obligations, cyber controls, and DSAR with fulfillment automation (Phase 1+2+3+3.1).",
+  "description": "RiskQ Privacy Compliance Platform — multi-tenant regulatory scoping, business obligations, cyber controls with maturity scoring, DSAR with fulfillment automation, RoPA/DPIA assessments, and international transfers (Phase 1+2+3+3.1+4).",
   "type": "module",
   "scripts": {
     "dev": "next dev",

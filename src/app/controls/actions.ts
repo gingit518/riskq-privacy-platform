@@ -68,6 +68,48 @@ export async function updateControlStatus(formData: FormData): Promise<void> {
   revalidatePath("/controls");
 }
 
+/** Updates the governance-maturity dimension for a control (Phase 4, PRD
+ * §5.5) — deliberately a separate action/form from updateControlStatus
+ * above rather than merged into it, since maturity and implementation
+ * status are independent axes an assessor may update at different times. */
+export async function updateControlMaturity(formData: FormData): Promise<void> {
+  const session = await requireSession();
+  if (!session) return;
+
+  const controlId = String(formData.get("controlId") || "");
+  if (!controlId) return;
+
+  const maturityLevel = String(formData.get("maturityLevel") || "not_assessed") as
+    | "not_assessed"
+    | "initial"
+    | "developing"
+    | "defined"
+    | "managed"
+    | "optimized";
+  const maturityNotes = String(formData.get("maturityNotes") || "");
+
+  const db = getDb();
+  await db
+    .insert(orgControls)
+    .values({
+      orgId: session.orgId,
+      controlId,
+      maturityLevel,
+      maturityNotes,
+    })
+    .onConflictDoUpdate({
+      target: [orgControls.orgId, orgControls.controlId],
+      set: {
+        maturityLevel,
+        maturityNotes,
+        updatedAt: new Date(),
+      },
+    });
+
+  revalidatePath("/controls");
+  revalidatePath("/assessments");
+}
+
 /** Uploads an evidence file for one control (PRD §5.4 "evidence upload").
  * `controlId` here is controls_library.id (see schema.ts comment on
  * evidenceFiles) — works even if this org has never saved a status for this

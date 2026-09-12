@@ -6,7 +6,14 @@ import { controlsLibrary, orgControls } from "@/lib/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import Nav from "@/components/Nav";
 import { listEvidenceForControls } from "@/lib/evidence";
-import { ensureControlsSeeded, updateControlStatus, uploadControlEvidence } from "./actions";
+import { getMaturityByFunction } from "@/lib/assessments/maturity";
+import { MATURITY_LEVELS, MATURITY_LEVEL_LABELS } from "@/lib/assessments/types";
+import {
+  ensureControlsSeeded,
+  updateControlStatus,
+  updateControlMaturity,
+  uploadControlEvidence,
+} from "./actions";
 
 const STATUS_OPTIONS = ["not_implemented", "partial", "implemented"] as const;
 
@@ -48,6 +55,7 @@ export default async function ControlsPage() {
     session.orgId,
     rows.map((r) => r.controls_library.id)
   );
+  const maturityByFunction = await getMaturityByFunction(session.orgId);
   const evidenceByControl = new Map<string, typeof evidenceRows>();
   for (const e of evidenceRows) {
     if (!e.controlId) continue;
@@ -72,6 +80,34 @@ export default async function ControlsPage() {
           <strong>{implemented}</strong> implemented · <strong>{partial}</strong> partial ·{" "}
           <strong>{notImplemented}</strong> not implemented · {total} total
         </p>
+
+        <section style={{ marginBottom: 24 }}>
+          <h2>Governance maturity by NIST Function</h2>
+          <p style={{ fontSize: 13, color: "#666" }}>
+            Reuses these same NIST CSF Functions/Categories rather than a second framework — see{" "}
+            <a href="/assessments">Assessments dashboard</a> for the same summary alongside RoPA/DPIA/transfers.
+          </p>
+          <table style={{ borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
+                <th style={{ padding: 4 }}>Function</th>
+                <th style={{ padding: 4 }}>Assessed</th>
+                <th style={{ padding: 4 }}>Avg. maturity (0–5)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {maturityByFunction.map((m) => (
+                <tr key={m.function}>
+                  <td style={{ padding: 4 }}>{m.function}</td>
+                  <td style={{ padding: 4 }}>
+                    {m.assessedCount}/{m.totalCount}
+                  </td>
+                  <td style={{ padding: 4 }}>{m.averageScore !== null ? m.averageScore.toFixed(1) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
 
         {Array.from(byFunction.entries()).map(([fn, items]) => (
           <section key={fn} style={{ marginBottom: 32 }}>
@@ -124,6 +160,32 @@ export default async function ControlsPage() {
                             name="evidenceNote"
                             defaultValue={org?.evidenceNote ?? ""}
                             placeholder="Evidence / notes"
+                            style={{ flex: 1 }}
+                          />
+                          <button type="submit">Save</button>
+                        </form>
+                      </td>
+                    </tr>
+                    <tr style={{ borderBottom: "1px solid #eee" }}>
+                      <td></td>
+                      <td colSpan={4} style={{ padding: "0 4px 8px" }}>
+                        <form
+                          action={updateControlMaturity}
+                          style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12 }}
+                        >
+                          <input type="hidden" name="controlId" value={lib.id} />
+                          <span style={{ color: "#666" }}>Maturity:</span>
+                          <select name="maturityLevel" defaultValue={org?.maturityLevel ?? "not_assessed"}>
+                            {MATURITY_LEVELS.map((lvl) => (
+                              <option key={lvl} value={lvl}>
+                                {MATURITY_LEVEL_LABELS[lvl]}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            name="maturityNotes"
+                            defaultValue={org?.maturityNotes ?? ""}
+                            placeholder="Maturity notes"
                             style={{ flex: 1 }}
                           />
                           <button type="submit">Save</button>

@@ -36,6 +36,15 @@ export default function Nav() {
       <Link href="/dsar" style={linkStyle}>
         DSAR
       </Link>
+      <Link href="/ropa" style={linkStyle}>
+        RoPA
+      </Link>
+      <Link href="/transfers" style={linkStyle}>
+        Transfers
+      </Link>
+      <Link href="/assessments" style={linkStyle}>
+        Assessments
+      </Link>
       <form action="/api/auth/logout" method="post" style={{ marginLeft: "auto" }}>
         <button type="submit">Log out</button>
       </form>

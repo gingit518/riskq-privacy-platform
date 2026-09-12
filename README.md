@@ -1,4 +1,4 @@
-# RiskQ Privacy Compliance Platform — Phase 1 + 2 + 3 + 3.1 scaffold
+# RiskQ Privacy Compliance Platform — Phase 1 + 2 + 3 + 3.1 + 4 scaffold
 
 Multi-tenant SaaS privacy compliance platform. Phase 1 = Regulatory
 Management, the module every other module (Business Obligations, DSAR,
@@ -8,9 +8,11 @@ that scope. Phase 3 = Data Subject Access Rights (DSAR), also wired to that
 scope. Phase 3.1 = DSAR fulfillment automation — turning the default
 fulfillment checklist's line items into tracked/assigned/auditable actions
 where that's honestly possible (see "What's built (Phase 3.1)" for what
-is and isn't). See the PRD (`PRD-Privacy-Application.md` in the Privacy
-Development project) for the full product spec — this README covers only
-what's needed to run and extend this codebase.
+is and isn't). Phase 4 = Assessments (RoPA, DPIA, readiness/maturity) and
+International Transfers (see "What's built (Phase 4)"). See the PRD
+(`PRD-Privacy-Application.md` in the Privacy Development project) for the
+full product spec — this README covers only what's needed to run and extend
+this codebase.
 
 ## What's built (Phase 1)
 
@@ -174,16 +176,69 @@ be automated. Honest answer, item by item, drove what got built:
   - *Statutory exemption review* stays a pure human legal judgment call —
     no attempt to encode "does this regulation have an exemption" logic.
 
+## What's built (Phase 4)
+
+Built 2026-09-12 (PRD §5.5/§5.7/§8). Three build-unblocking calls Ariel made
+that day, each flagged in code comments where it matters: DPIA content is a
+generic GDPR Art. 35-style question template, not legally reviewed (same
+caveat as Cyber Controls' NIST tagging); maturity scoring reuses the
+existing NIST CSF categories (`controls_library`) rather than a new
+framework; a processing activity's "systems involved" reuses the DSAR
+Systems Register (`dsar_systems`) rather than a second systems list.
+
+- **RoPA — Records of Processing Activities** (`processing_activities`,
+  `/ropa`, `/ropa/[id]`) — one row per distinct processing purpose: name,
+  purpose, data categories/subjects, lawful basis, retention period, and
+  three risk flags (special-category data, large-scale processing,
+  automated decision-making). "Systems involved" is a many-to-many join
+  (`processing_activity_systems`) to `dsar_systems`, resolved **live** on
+  the detail page (not snapshotted) — RoPA is meant to reflect current
+  state, unlike a DSAR request's point-in-time task list. This is new
+  shared infrastructure for DPIA/Transfers, not a retrofit onto Business
+  Obligations (Phase 2 shipped without it — that gap isn't silently closed).
+- **DPIA/PIA** (`dpia_assessments`, `/ropa/[id]/dpia`) — one DPIA per
+  activity, started idempotently from the activity page, editable in place
+  until marked "completed" (**not** append-only/versioned like the rest of
+  this schema — deliberate, since a DPIA is a living draft, not a
+  point-in-time audit event; flagged in the schema comment). 15 questions
+  across 5 sections (`dpia-questions.ts`) drive an "DPIA recommended"
+  banner whenever any risk flag is set (`needsDpiaReview()`) — this never
+  forces a DPIA, only surfaces the recommendation; a human still decides.
+  Completing one records a risk rating (low/medium/high) and a mitigations
+  summary; reopening clears completion and returns it to draft.
+- **Readiness/maturity scoring** (`org_controls.maturityLevel` +
+  `maturityNotes`, extended into `/controls`, aggregated in
+  `getMaturityByFunction()`) — a second, independent axis from Cyber
+  Controls' existing implementation `status`: a control can be
+  "implemented" but ad hoc (low maturity), or "partial" but well-governed
+  where it exists (higher maturity than status alone implies). Six levels
+  (not assessed → initial → developing → defined → managed → optimized),
+  scored 0–5 and averaged per NIST Function, excluding not-assessed rows
+  from the average rather than treating them as zero.
+- **International Transfers** (`international_transfers`, `/transfers`) —
+  a cross-border transfer registry: from/to jurisdiction, an optional link
+  to a processing activity, transfer mechanism (SCCs / adequacy decision /
+  BCRs / derogation / none), and transfer-impact-assessment status.
+  `mechanism = 'none'` is highlighted as the explicit gap state the PRD
+  asks to alert on, not an omitted field — there is **no** automated
+  jurisdiction-conflict detection; this is a manual register.
+- **Assessments dashboard** (`/assessments`) — the cross-module summary
+  none of the four individual pages shows alone: RoPA count, DPIAs
+  recommended-but-not-started vs. in-progress vs. completed, transfers with
+  no mechanism, and controls-maturity-assessed, each linking to the page
+  that can act on it.
+
 ## What's NOT built yet
 
-Assessments (DPIA/PIA, readiness/maturity, RoPA — **not** vendor/TPRM, which
-is explicitly out of scope for this product per Ariel's instruction),
-International Transfers, and Tracking Technologies/CMP (scoped in PRD §5.9).
-Those are later phases per the PRD roadmap (§8). Automated DSAR fulfillment
-(PRD §5.10) is now partially built — see "What's built (Phase 3.1)" — the
-pieces that are genuinely automatable (systems fan-out, legal-hold lookup,
-export attachment, response send) are done; identity-proofing and
-auto-redaction are deliberately not, per the reasoning in that section.
+Tracking Technologies/CMP (scoped in PRD §5.9) — the last module on the PRD
+roadmap (§8) — is not built. Automated DSAR fulfillment (PRD §5.10) is
+partially built — see "What's built (Phase 3.1)" — the pieces that are
+genuinely automatable (systems fan-out, legal-hold lookup, export
+attachment, response send) are done; identity-proofing and auto-redaction
+are deliberately not, per the reasoning in that section. Assessments/RoPA/
+DPIA/readiness-maturity and International Transfers are now built — see
+"What's built (Phase 4)" — **not** vendor/TPRM, which stays explicitly out
+of scope for this product per Ariel's instruction.
 
 ## Setup required before this deploys
 
@@ -333,6 +388,35 @@ Copy `.env.example` to `.env.local` for local dev.
 - **Legal hold matching is exact-email only** (case-insensitive) — no
   fuzzy/name matching, so a hold entered under a different email address
   than the one a requester submits with won't flag.
+- **DPIA question set is a generic, unreviewed template** (`dpia-questions.ts`)
+  — a standard GDPR Art. 35-style methodology, not sourced from any specific
+  customer's legal counsel or a licensed framework. Same unverified-content
+  caveat as `regulation_sets`/`controls_library` elsewhere in this app (PRD
+  §9 item 3); the UI says so on the DPIA page itself.
+- **Maturity scoring reuses NIST CSF categories rather than a dedicated
+  maturity framework** (e.g. no CMMI/C2M2-style rubric per category) — a
+  deliberate reuse decision, not an oversight; revisit if a customer needs a
+  named maturity model for an audit.
+- **RoPA's "systems involved" reuses the DSAR Systems Register**
+  (`dsar_systems`) via a new join table rather than a second, independently
+  maintained systems list — this leaves `dsar_systems` with a now-inaccurate
+  DSAR-specific table name despite serving two modules. Not silently
+  renamed, since it may already hold live production data from the Phase
+  3.1 rollout.
+- **DPIA is one row per activity, not versioned.** Unlike almost every other
+  table in this schema (append-only, audit-trail style), `dpia_assessments`
+  is edited in place until "completed," then edited again if reopened —
+  there is no history of prior draft states. Acceptable for V1 since a DPIA
+  is treated as a living document, but worth revisiting if a customer needs
+  to show a regulator what changed between drafts.
+- **International Transfers has no automated jurisdiction-conflict
+  detection.** The registry records what mechanism an org says it has in
+  place; nothing here checks whether that mechanism is actually valid or
+  sufficient for the jurisdiction pair logged.
+- **No error-message UI for the Phase 4 forms** — same known gap as evidence
+  upload elsewhere in this app: a validation failure in the RoPA/DPIA/
+  Transfers server actions surfaces as Next's generic error page, not an
+  inline message.
 
 ## Local development
 
