@@ -3,11 +3,20 @@ import { requireSession } from "@/lib/auth/session";
 import { listConnectorInfo } from "@/lib/connectors/registry";
 import { isSalesforceConfigured } from "@/lib/connectors/salesforce";
 import { signOAuthState } from "@/lib/connectors/oauth-state";
+import { generateCodeVerifier, codeChallengeFromVerifier, PKCE_COOKIE_NAME } from "@/lib/connectors/pkce";
 
 const SALESFORCE_AUTHORIZE_URL = "https://login.salesforce.com/services/oauth2/authorize";
+const PKCE_COOKIE_MAX_AGE_SECONDS = 60 * 10; // matches the OAuth state JWT's own expiry
 
+// Strips a trailing slash so a redirect_uri built from this never produces
+// a double slash (e.g. APP_BASE_URL="https://x.vercel.app/" + "/api/..." ->
+// ".../.../..." ) — this exact bug caused a live redirect_uri_mismatch
+// against Salesforce on 2026-09-15 when the env var was set with a
+// trailing slash. Defensive here even though the env var has since been
+// corrected, since nothing stops it drifting back.
 function appBaseUrl(req: NextRequest): string {
-  return process.env.APP_BASE_URL || req.nextUrl.origin;
+  const base = process.env.APP_BASE_URL || req.nextUrl.origin;
+  return base.replace(/\/+$/, "");
 }
 
 // Real OAuth authorization-code redirect for Salesforce (2026-09-15) — see
@@ -25,14 +34,33 @@ export async function GET(req: NextRequest, { params }: { params: { connectorId:
     const redirectUri = `${appBaseUrl(req)}/api/connectors/salesforce/callback`;
     const state = await signOAuthState({ orgId: session.orgId, userId: session.userId, connectorId: "salesforce" });
 
+    // PKCE — RiskQ's Salesforce app (an External Client App) requires a
+    // code_challenge or the authorize request is rejected outright (see
+    // pkce.ts header comment). The verifier itself is never put in the URL
+    // or the state JWT — it's set as an httpOnly cookie below and read back
+    // in the callback route, so it's never exposed via browser history,
+    // referrer headers, or logs the way a query param would be.
+    const codeVerifier = generateCodeVerifier();
+    const codeChallenge = codeChallengeFromVerifier(codeVerifier);
+
     const url = new URL(SALESFORCE_AUTHORIZE_URL);
     url.searchParams.set("response_type", "code");
     url.searchParams.set("client_id", clientId);
     url.searchParams.set("redirect_uri", redirectUri);
     url.searchParams.set("scope", "api refresh_token offline_access");
     url.searchParams.set("state", state);
+    url.searchParams.set("code_challenge", codeChallenge);
+    url.searchParams.set("code_challenge_method", "S256");
 
-    return NextResponse.redirect(url);
+    const response = NextResponse.redirect(url);
+    response.cookies.set(PKCE_COOKIE_NAME, codeVerifier, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/api/connectors/salesforce/callback",
+      maxAge: PKCE_COOKIE_MAX_AGE_SECONDS,
+    });
+    return response;
   }
 
   // STUB — unchanged for m365/google_drive (and for salesforce if somehow

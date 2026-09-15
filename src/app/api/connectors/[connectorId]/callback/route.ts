@@ -3,17 +3,30 @@ import { requireSession } from "@/lib/auth/session";
 import { verifyOAuthState } from "@/lib/connectors/oauth-state";
 import { isSalesforceConfigured, fetchSalesforceIdentityLabel } from "@/lib/connectors/salesforce";
 import { upsertConnection } from "@/lib/connectors/connections";
+import { PKCE_COOKIE_NAME } from "@/lib/connectors/pkce";
 
 const SALESFORCE_TOKEN_URL = "https://login.salesforce.com/services/oauth2/token";
 
+// Same trailing-slash defense as authorize/route.ts — see that file's
+// comment. A double slash here would break the token exchange the same way
+// it broke the authorize redirect on 2026-09-15.
 function appBaseUrl(req: NextRequest): string {
-  return process.env.APP_BASE_URL || req.nextUrl.origin;
+  const base = process.env.APP_BASE_URL || req.nextUrl.origin;
+  return base.replace(/\/+$/, "");
 }
 
 function redirectToConnectors(req: NextRequest, message: string): NextResponse {
   const url = new URL("/connectors", appBaseUrl(req));
   url.searchParams.set("connectorMessage", message);
-  return NextResponse.redirect(url);
+  const response = NextResponse.redirect(url);
+  // Single-use — clear the PKCE cookie on every exit from this route
+  // (success or any error branch) so a stale verifier never lingers for a
+  // retried connection attempt. Must repeat the same `path` used when the
+  // cookie was set in authorize/route.ts — cookies are scoped by path, so a
+  // delete/clear at a different path silently no-ops and leaves the
+  // original cookie in the browser.
+  response.cookies.set(PKCE_COOKIE_NAME, "", { path: "/api/connectors/salesforce/callback", maxAge: 0 });
+  return response;
 }
 
 // Real OAuth callback for Salesforce (2026-09-15) — paired with
@@ -55,6 +68,16 @@ export async function GET(req: NextRequest, { params }: { params: { connectorId:
     return redirectToConnectors(req, "Salesforce connection request expired or was invalid — please try connecting again.");
   }
 
+  // PKCE — the verifier set as an httpOnly cookie in authorize/route.ts,
+  // never sent through the URL/state param (see pkce.ts). Salesforce's
+  // token endpoint requires this alongside code_challenge on the authorize
+  // request, or the exchange itself is rejected the same way the authorize
+  // request was without code_challenge (confirmed live 2026-09-15).
+  const codeVerifier = req.cookies.get(PKCE_COOKIE_NAME)?.value;
+  if (!codeVerifier) {
+    return redirectToConnectors(req, "Salesforce connection request expired (PKCE verifier missing) — please try connecting again.");
+  }
+
   const clientId = process.env.SALESFORCE_CLIENT_ID!;
   const clientSecret = process.env.SALESFORCE_CLIENT_SECRET!;
   const redirectUri = `${appBaseUrl(req)}/api/connectors/salesforce/callback`;
@@ -65,6 +88,7 @@ export async function GET(req: NextRequest, { params }: { params: { connectorId:
     client_id: clientId,
     client_secret: clientSecret,
     redirect_uri: redirectUri,
+    code_verifier: codeVerifier,
   });
 
   let tokenJson: { access_token?: string; refresh_token?: string; instance_url?: string };
