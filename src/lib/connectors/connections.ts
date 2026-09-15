@@ -61,3 +61,42 @@ export async function connectMock(params: {
     connectedBy: params.connectedBy,
   });
 }
+
+/** Real-OAuth callback path (currently: Salesforce — see
+ * src/app/api/connectors/[connectorId]/callback/route.ts). Encrypts the
+ * plaintext refresh token before it ever touches the DB. Upserts on the
+ * (orgId, connectorId) unique index: a re-auth (token rotated, scopes
+ * changed, user reconnects after revoking access on the provider side)
+ * replaces the stored token and reactivates the row rather than creating a
+ * second connector_connections row for the same org+connector, which would
+ * violate that unique index anyway. */
+export async function upsertConnection(params: {
+  orgId: string;
+  connectorId: ConnectorId;
+  accountLabel: string;
+  refreshToken: string;
+  connectedBy: string;
+}): Promise<void> {
+  const db = getDb();
+  const encrypted = encryptSecret(params.refreshToken);
+  await db
+    .insert(connectorConnections)
+    .values({
+      orgId: params.orgId,
+      connectorId: params.connectorId,
+      accountLabel: params.accountLabel,
+      encryptedRefreshToken: encrypted,
+      connectedBy: params.connectedBy,
+      active: true,
+    })
+    .onConflictDoUpdate({
+      target: [connectorConnections.orgId, connectorConnections.connectorId],
+      set: {
+        accountLabel: params.accountLabel,
+        encryptedRefreshToken: encrypted,
+        connectedBy: params.connectedBy,
+        connectedAt: new Date(),
+        active: true,
+      },
+    });
+}

@@ -5,7 +5,11 @@ import { listConnectorInfo } from "@/lib/connectors/registry";
 import { listConnections } from "@/lib/connectors/connections";
 import { connectMockAction, disconnectConnectorAction } from "./actions";
 
-export default async function ConnectorsPage() {
+export default async function ConnectorsPage({
+  searchParams,
+}: {
+  searchParams: { connectorMessage?: string };
+}) {
   const session = await requireSession();
   if (!session) redirect("/login");
 
@@ -18,6 +22,19 @@ export default async function ConnectorsPage() {
       <Nav />
       <main style={{ maxWidth: 700, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
         <h1>Connectors</h1>
+        {searchParams.connectorMessage && (
+          <p
+            style={{
+              background: "#f5f5f5",
+              border: "1px solid #ddd",
+              borderRadius: 4,
+              padding: "10px 12px",
+              fontSize: 14,
+            }}
+          >
+            {searchParams.connectorMessage}
+          </p>
+        )}
         <p style={{ color: "#666", fontSize: 14 }}>
           Connect systems here so a DSAR request can search them for a
           requester&apos;s data (§5.10). Every match found still requires a
