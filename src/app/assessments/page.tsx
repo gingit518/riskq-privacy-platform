@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { requireSession } from "@/lib/auth/session";
 import AppShell from "@/components/AppShell";
+import Card from "@/components/Card";
 import { listActivities, needsDpiaReview } from "@/lib/assessments/ropa";
 import { getDpiaForActivity } from "@/lib/assessments/dpia";
 import { listTransfers } from "@/lib/assessments/transfers";
@@ -9,7 +10,12 @@ import { getMaturityByFunction } from "@/lib/assessments/maturity";
 
 /** Aggregation dashboard tying together the four Phase 4 modules — RoPA,
  * DPIA, International Transfers, and Cyber Controls maturity — since none
- * of those individual pages shows the cross-module picture on its own. */
+ * of those individual pages shows the cross-module picture on its own.
+ * Reskinned in the PrivacyQ "Harbor" UI pass, Batch 6 (PRD §5.12), alongside
+ * Cyber Controls. The five stat tiles keep their link-card shape but move
+ * off the old #f5f5f5/#fff7ed/#fef2f2 inline flag colors onto the shared
+ * surface/warning-bg/danger-bg tokens; the maturity table is now Card-
+ * wrapped, matching the same table on /controls. Data queries unchanged. */
 export default async function AssessmentsPage() {
   const session = await requireSession();
   if (!session) redirect("/login");
@@ -32,11 +38,50 @@ export default async function AssessmentsPage() {
   const overallAssessed = maturity.reduce((s, m) => s + m.assessedCount, 0);
   const overallTotal = maturity.reduce((s, m) => s + m.totalCount, 0);
 
+  const tiles: {
+    href: string;
+    label: string;
+    value: string;
+    caption?: string;
+    flagged?: boolean;
+    warn?: boolean;
+  }[] = [
+    {
+      href: "/ropa",
+      label: "Processing activities",
+      value: String(activities.length),
+    },
+    {
+      href: "/ropa",
+      label: "DPIA recommended, not started",
+      value: String(dpiaNotStartedFlagged),
+      caption: `${flaggedCount} flagged in total`,
+      warn: dpiaNotStartedFlagged > 0,
+    },
+    {
+      href: "/ropa",
+      label: "DPIAs in progress / completed",
+      value: `${dpiaDraftCount} / ${dpiaCompletedCount}`,
+    },
+    {
+      href: "/transfers",
+      label: "Transfers with no mechanism",
+      value: String(transferGaps),
+      caption: `${transfers.length} logged in total`,
+      flagged: transferGaps > 0,
+    },
+    {
+      href: "/controls",
+      label: "Controls with maturity assessed",
+      value: `${overallAssessed}/${overallTotal}`,
+    },
+  ];
+
   return (
     <AppShell>
-      <main style={{ maxWidth: 900, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
-        <h1>Assessments</h1>
-        <p style={{ color: "#666", fontSize: 14 }}>
+      <div style={{ padding: "24px 28px", maxWidth: 980 }}>
+        <h1 style={{ marginTop: 0 }}>Assessments</h1>
+        <p style={{ color: "var(--pq-ink-muted)", fontSize: 14 }}>
           One place to see RoPA coverage, DPIA status, transfer gaps, and control maturity
           together. Each number links to the page that can act on it.
         </p>
@@ -46,68 +91,64 @@ export default async function AssessmentsPage() {
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
             gap: 12,
-            marginBottom: 32,
+            marginBottom: 24,
           }}
         >
-          <Link href="/ropa" style={{ padding: 12, background: "#f5f5f5", color: "inherit", textDecoration: "none" }}>
-            <div style={{ fontSize: 12, color: "#666" }}>Processing activities</div>
-            <div style={{ fontSize: 24, fontWeight: 600 }}>{activities.length}</div>
-          </Link>
-
-          <Link href="/ropa" style={{ padding: 12, background: dpiaNotStartedFlagged > 0 ? "#fff7ed" : "#f5f5f5", color: "inherit", textDecoration: "none" }}>
-            <div style={{ fontSize: 12, color: "#666" }}>DPIA recommended, not started</div>
-            <div style={{ fontSize: 24, fontWeight: 600 }}>{dpiaNotStartedFlagged}</div>
-            <div style={{ fontSize: 11, color: "#999" }}>{flaggedCount} flagged in total</div>
-          </Link>
-
-          <Link href="/ropa" style={{ padding: 12, background: "#f5f5f5", color: "inherit", textDecoration: "none" }}>
-            <div style={{ fontSize: 12, color: "#666" }}>DPIAs in progress / completed</div>
-            <div style={{ fontSize: 24, fontWeight: 600 }}>
-              {dpiaDraftCount} / {dpiaCompletedCount}
-            </div>
-          </Link>
-
-          <Link href="/transfers" style={{ padding: 12, background: transferGaps > 0 ? "#fef2f2" : "#f5f5f5", color: "inherit", textDecoration: "none" }}>
-            <div style={{ fontSize: 12, color: "#666" }}>Transfers with no mechanism</div>
-            <div style={{ fontSize: 24, fontWeight: 600 }}>{transferGaps}</div>
-            <div style={{ fontSize: 11, color: "#999" }}>{transfers.length} logged in total</div>
-          </Link>
-
-          <Link href="/controls" style={{ padding: 12, background: "#f5f5f5", color: "inherit", textDecoration: "none" }}>
-            <div style={{ fontSize: 12, color: "#666" }}>Controls with maturity assessed</div>
-            <div style={{ fontSize: 24, fontWeight: 600 }}>
-              {overallAssessed}/{overallTotal}
-            </div>
-          </Link>
+          {tiles.map((tile) => (
+            <Link key={tile.label} href={tile.href} style={{ textDecoration: "none", color: "inherit" }}>
+              <Card
+                style={{
+                  background: tile.flagged
+                    ? "var(--pq-danger-bg)"
+                    : tile.warn
+                    ? "var(--pq-warning-bg)"
+                    : "var(--pq-surface)",
+                }}
+              >
+                <div style={{ fontSize: 12, color: "var(--pq-ink-muted)" }}>{tile.label}</div>
+                <div style={{ fontSize: 24, fontWeight: 600, fontFamily: "var(--font-heading)" }}>
+                  {tile.value}
+                </div>
+                {tile.caption && (
+                  <div style={{ fontSize: 11, color: "var(--pq-ink-muted)", marginTop: 2 }}>
+                    {tile.caption}
+                  </div>
+                )}
+              </Card>
+            </Link>
+          ))}
         </div>
 
-        <h2>Maturity by NIST Function</h2>
-        <table style={{ borderCollapse: "collapse", fontSize: 13, marginBottom: 24 }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
-              <th style={{ padding: 4 }}>Function</th>
-              <th style={{ padding: 4 }}>Assessed</th>
-              <th style={{ padding: 4 }}>Avg. maturity (0–5)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {maturity.map((m) => (
-              <tr key={m.function}>
-                <td style={{ padding: 4 }}>{m.function}</td>
-                <td style={{ padding: 4 }}>
-                  {m.assessedCount}/{m.totalCount}
-                </td>
-                <td style={{ padding: 4 }}>{m.averageScore !== null ? m.averageScore.toFixed(1) : "—"}</td>
+        <Card title="Maturity by NIST Function" style={{ marginBottom: 20 }}>
+          <table style={{ borderCollapse: "collapse", fontSize: 13, width: "100%" }}>
+            <thead>
+              <tr style={{ textAlign: "left", color: "var(--pq-ink-muted)" }}>
+                <th style={{ fontWeight: 500, padding: "4px 0" }}>Function</th>
+                <th style={{ fontWeight: 500, padding: "4px 0" }}>Assessed</th>
+                <th style={{ fontWeight: 500, padding: "4px 0" }}>Avg. maturity (0–5)</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {maturity.map((m) => (
+                <tr key={m.function} style={{ borderTop: "1px solid var(--pq-line)" }}>
+                  <td style={{ padding: "6px 0" }}>{m.function}</td>
+                  <td style={{ padding: "6px 0" }}>
+                    {m.assessedCount}/{m.totalCount}
+                  </td>
+                  <td style={{ padding: "6px 0" }}>
+                    {m.averageScore !== null ? m.averageScore.toFixed(1) : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
 
-        <p style={{ fontSize: 12, color: "#999" }}>
+        <p style={{ fontSize: 12, color: "var(--pq-ink-muted)" }}>
           None of the counts above imply a compliance determination — they surface gaps for a
           human to review (PRD §9 unverified-content caveat applies throughout this module).
         </p>
-      </main>
+      </div>
     </AppShell>
   );
 }
