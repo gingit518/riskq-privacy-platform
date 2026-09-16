@@ -4,6 +4,9 @@ import { getDb } from "@/lib/db";
 import { legalHolds } from "@/lib/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import AppShell from "@/components/AppShell";
+import Card from "@/components/Card";
+import Badge from "@/components/Badge";
+import Button from "@/components/Button";
 import { addLegalHoldAction, releaseLegalHoldAction } from "./actions";
 
 export default async function LegalHoldsSettingsPage() {
@@ -19,66 +22,74 @@ export default async function LegalHoldsSettingsPage() {
 
   return (
     <AppShell>
-      <main style={{ maxWidth: 700, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
-        <h1>Legal Holds</h1>
-        <p style={{ color: "#666", fontSize: 14 }}>
-          Names/emails under an active hold or litigation matter. Every DSAR
-          request detail page checks the requester&apos;s email against this
-          list <strong>live</strong> (not just at intake), since a hold can
-          be placed after a request is already open. This is a flag for a
-          human reviewer, not a block — whether the hold actually justifies
-          withholding data is still a legal judgment call.
+      <div style={{ padding: "24px 28px", maxWidth: 760 }}>
+        <h1 style={{ marginTop: 0 }}>Legal Holds</h1>
+        <p style={{ color: "var(--pq-ink-muted)", fontSize: 14, marginBottom: 22 }}>
+          Names/emails under an active hold or litigation matter. Every DSAR request detail page
+          checks the requester&apos;s email against this list <strong>live</strong> (not just at
+          intake), since a hold can be placed after a request is already open. This is a flag for
+          a human reviewer, not a block — whether the hold actually justifies withholding data is
+          still a legal judgment call.
         </p>
 
-        <ul style={{ paddingLeft: 0, listStyle: "none", marginBottom: 24 }}>
-          {holds.map((h) => (
-            <li
-              key={h.id}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: "8px 0",
-                borderBottom: "1px solid #eee",
-                opacity: h.active ? 1 : 0.5,
-              }}
-            >
-              <div>
-                <strong>{h.subjectName || h.subjectEmail}</strong>
-                {!h.active && <span style={{ fontSize: 12, color: "#666" }}> (released)</span>}
-                <div style={{ fontSize: 13, color: "#666" }}>{h.subjectEmail}</div>
-                {h.matter && <div style={{ fontSize: 12, color: "#888" }}>{h.matter}</div>}
-              </div>
-              {h.active && (
-                <form action={releaseLegalHoldAction}>
-                  <input type="hidden" name="id" value={h.id} />
-                  <button type="submit">Release</button>
-                </form>
-              )}
-            </li>
-          ))}
-          {holds.length === 0 && (
-            <li style={{ color: "#666", padding: "8px 0" }}>No legal holds on file.</li>
+        <Card style={{ marginBottom: 22, padding: holds.length > 0 ? 0 : "18px 20px" }}>
+          {holds.length === 0 ? (
+            <p style={{ margin: 0, color: "var(--pq-ink-muted)" }}>No legal holds on file.</p>
+          ) : (
+            <ul style={{ paddingLeft: 0, listStyle: "none", margin: 0 }}>
+              {holds.map((h) => (
+                <li
+                  key={h.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "12px 18px",
+                    borderBottom: "1px solid var(--pq-line)",
+                  }}
+                >
+                  <div>
+                    <span style={{ fontWeight: 600, fontSize: 13.5 }}>{h.subjectName || h.subjectEmail}</span>{" "}
+                    {!h.active && <Badge variant="neutral">Released</Badge>}
+                    <div style={{ fontSize: 12.5, color: "var(--pq-ink-muted)", marginTop: 2 }}>{h.subjectEmail}</div>
+                    {h.matter && <div style={{ fontSize: 11.5, color: "var(--pq-ink-muted)" }}>{h.matter}</div>}
+                  </div>
+                  {h.active && (
+                    <form action={releaseLegalHoldAction}>
+                      <input type="hidden" name="id" value={h.id} />
+                      <Button type="submit" variant="secondary">
+                        Release
+                      </Button>
+                    </form>
+                  )}
+                </li>
+              ))}
+            </ul>
           )}
-        </ul>
+        </Card>
 
-        <h2>Add a hold</h2>
-        <form action={addLegalHoldAction} style={{ display: "grid", gap: 8, maxWidth: 400 }}>
-          <label>
-            Subject name
-            <input name="subjectName" style={{ display: "block", width: "100%" }} />
-          </label>
-          <label>
-            Subject email
-            <input name="subjectEmail" type="email" required style={{ display: "block", width: "100%" }} />
-          </label>
-          <label>
-            Matter
-            <input name="matter" style={{ display: "block", width: "100%" }} />
-          </label>
-          <button type="submit">Add hold</button>
-        </form>
-      </main>
+        <Card title="Add a hold">
+          <form action={addLegalHoldAction} style={{ display: "grid", gap: 12, maxWidth: 420 }}>
+            <label>
+              Subject name
+              <input name="subjectName" style={{ display: "block", width: "100%", marginTop: 4 }} />
+            </label>
+            <label>
+              Subject email
+              <input name="subjectEmail" type="email" required style={{ display: "block", width: "100%", marginTop: 4 }} />
+            </label>
+            <label>
+              Matter
+              <input name="matter" style={{ display: "block", width: "100%", marginTop: 4 }} />
+            </label>
+            <div>
+              <Button type="submit" variant="primary">
+                Add hold
+              </Button>
+            </div>
+          </form>
+        </Card>
+      </div>
     </AppShell>
   );
 }
