@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { desc, inArray } from "drizzle-orm";
 import { requireSession } from "@/lib/auth/session";
-import Nav from "@/components/Nav";
+import AppShell from "@/components/AppShell";
 import { getDb } from "@/lib/db";
 import { dsarEvents, dsarRequests } from "@/lib/db/schema";
 import { computeComplianceSummary } from "@/lib/compliance/score";
@@ -45,8 +45,7 @@ export default async function CompliancePage() {
       : [];
 
   return (
-    <>
-      <Nav />
+    <AppShell>
       <main style={{ maxWidth: 900, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
         <h1>Compliance dashboard</h1>
         <p style={{ color: "#666", fontSize: 14 }}>
@@ -127,6 +126,6 @@ export default async function CompliancePage() {
           {recentEvents.length === 0 && <li style={{ color: "#666" }}>No DSAR activity yet.</li>}
         </ul>
       </main>
-    </>
+    </AppShell>
   );
 }

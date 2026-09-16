@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import "@/lib/fonts";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "RiskQ Privacy Compliance Platform",
+  title: "PrivacyQ",
   description:
-    "Regulatory scope, business obligations, DSAR, and cyber controls — Phase 1 scaffold.",
+    "PrivacyQ — regulatory scope, business obligations, DSAR, and cyber controls compliance platform.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

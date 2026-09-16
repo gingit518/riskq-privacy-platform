@@ -1,18 +1,59 @@
+/* PrivacyQ "Harbor" design tokens (PRD §5.12). Teal + clay, Source Serif 4 +
+   Public Sans. Kept as CSS custom properties so components (Nav, AppShell,
+   and later Card/Badge/Button in subsequent batches) reference one source
+   of truth rather than hardcoded hex values. */
+:root {
+  --pq-paper: #f6f4ef;
+  --pq-surface: #ffffff;
+  --pq-ink: #171a1f;
+  --pq-ink-muted: #5b6470;
+  --pq-line: #e3dfd5;
+
+  --pq-primary: #0e4749;
+  --pq-primary-ink: #ffffff;
+  --pq-accent: #e08a4f;
+
+  --pq-success: #2f6f4e;
+  --pq-success-bg: #e9f3ec;
+  --pq-warning: #a5511f;
+  --pq-warning-bg: #fbede3;
+  --pq-danger: #a23b3b;
+  --pq-danger-bg: #f8e9e9;
+  --pq-neutral: #6b7280;
+  --pq-neutral-bg: #f1efea;
+
+  --font-heading: "Source Serif 4", Georgia, serif;
+  --font-body: "Public Sans", system-ui, sans-serif;
+}
+
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  color: #1a1a1a;
-  background: #fafafa;
+  color: var(--pq-ink);
+  background: var(--pq-paper);
+  font-family: var(--font-body);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-heading);
+  font-weight: 700;
 }
 
 input,
 select,
 button {
   font: inherit;
-  padding: 6px 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--pq-line);
+  border-radius: 6px;
+  background: var(--pq-surface);
+  color: var(--pq-ink);
 }
 
 button {
@@ -26,5 +67,5 @@ label {
 }
 
 a {
-  color: #0b5fff;
+  color: var(--pq-primary);
 }

@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { orgObligations, dsarRequests, controlsLibrary, orgControls } from "@/lib/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import Nav from "@/components/Nav";
+import AppShell from "@/components/AppShell";
 import { listActivities } from "@/lib/assessments/ropa";
 import { getDpiaForActivity } from "@/lib/assessments/dpia";
 import { listTransfers } from "@/lib/assessments/transfers";
@@ -74,8 +74,7 @@ export default async function SummaryPage() {
   const myPending = await listMyPending(session.orgId, session.userId);
 
   return (
-    <>
-      <Nav />
+    <AppShell>
       <main style={{ maxWidth: 1000, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
         <h1>Management summary</h1>
         <p style={{ color: "#666", fontSize: 14 }}>
@@ -175,7 +174,7 @@ export default async function SummaryPage() {
           </ul>
         )}
       </main>
-    </>
+    </AppShell>
   );
 }
 

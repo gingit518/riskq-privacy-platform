@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth/session";
-import Nav from "@/components/Nav";
+import AppShell from "@/components/AppShell";
 import { listSystems } from "@/lib/dsar/systems";
 import { addSystemAction, deactivateSystemAction, reactivateSystemAction } from "./actions";
 
@@ -11,8 +11,7 @@ export default async function DsarSystemsSettingsPage() {
   const systems = await listSystems(session.orgId);
 
   return (
-    <>
-      <Nav />
+    <AppShell>
       <main style={{ maxWidth: 700, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
         <h1>Systems Register</h1>
         <p style={{ color: "#666", fontSize: 14 }}>
@@ -81,6 +80,6 @@ export default async function DsarSystemsSettingsPage() {
           <button type="submit">Add system</button>
         </form>
       </main>
-    </>
+    </AppShell>
   );
 }

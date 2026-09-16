@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth/session";
-import Nav from "@/components/Nav";
+import AppShell from "@/components/AppShell";
 import { DSAR_REQUEST_TYPES, DSAR_REQUEST_TYPE_LABELS } from "@/lib/dsar/types";
 import { createInternalDsarRequest } from "../actions";
 
@@ -9,8 +9,7 @@ export default async function NewDsarRequestPage() {
   if (!session) redirect("/login");
 
   return (
-    <>
-      <Nav />
+    <AppShell>
       <main style={{ maxWidth: 480, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
         <h1>Log a DSAR request</h1>
         <p style={{ color: "#666", fontSize: 14 }}>
@@ -46,6 +45,6 @@ export default async function NewDsarRequestPage() {
           <button type="submit">Log request</button>
         </form>
       </main>
-    </>
+    </AppShell>
   );
 }

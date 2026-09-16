@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth/session";
-import Nav from "@/components/Nav";
+import AppShell from "@/components/AppShell";
 import { listConnectorInfo } from "@/lib/connectors/registry";
 import { listConnections } from "@/lib/connectors/connections";
 import { connectMockAction, disconnectConnectorAction } from "./actions";
@@ -18,8 +18,7 @@ export default async function ConnectorsPage({
   const mockMode = info.length > 0 && info[0].mock;
 
   return (
-    <>
-      <Nav />
+    <AppShell>
       <main style={{ maxWidth: 700, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
         <h1>Connectors</h1>
         {searchParams.connectorMessage && (
@@ -97,6 +96,6 @@ export default async function ConnectorsPage({
           })}
         </ul>
       </main>
-    </>
+    </AppShell>
   );
 }

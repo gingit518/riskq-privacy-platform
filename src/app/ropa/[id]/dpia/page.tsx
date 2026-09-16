@@ -1,7 +1,7 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { requireSession } from "@/lib/auth/session";
-import Nav from "@/components/Nav";
+import AppShell from "@/components/AppShell";
 import { getActivity } from "@/lib/assessments/ropa";
 import { getDpiaForActivity } from "@/lib/assessments/dpia";
 import { DPIA_QUESTIONS, DPIA_SECTIONS } from "@/lib/assessments/dpia-questions";
@@ -26,8 +26,7 @@ export default async function DpiaPage({ params }: { params: { id: string } }) {
   const isCompleted = dpia!.status === "completed";
 
   return (
-    <>
-      <Nav />
+    <AppShell>
       <main style={{ maxWidth: 800, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
         <p>
           <Link href={`/ropa/${activity.id}`}>&larr; {activity.name}</Link>
@@ -104,6 +103,6 @@ export default async function DpiaPage({ params }: { params: { id: string } }) {
           </form>
         )}
       </main>
-    </>
+    </AppShell>
   );
 }

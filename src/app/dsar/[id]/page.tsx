@@ -3,7 +3,7 @@ import { and, asc, desc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { dsarRequests, dsarChecklistItems, dsarEvents, orgs } from "@/lib/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import Nav from "@/components/Nav";
+import AppShell from "@/components/AppShell";
 import {
   DSAR_REQUEST_TYPE_LABELS,
   DSAR_STATUSES,
@@ -104,8 +104,7 @@ export default async function DsarRequestDetailPage({ params }: { params: { id: 
   };
 
   return (
-    <>
-      <Nav />
+    <AppShell>
       <main style={{ maxWidth: 800, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
         <h1>{request.requesterName}</h1>
         <p style={{ color: "#666" }}>{request.requesterEmail}</p>
@@ -349,6 +348,6 @@ export default async function DsarRequestDetailPage({ params }: { params: { id: 
           ))}
         </ul>
       </main>
-    </>
+    </AppShell>
   );
 }

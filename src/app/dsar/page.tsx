@@ -4,7 +4,7 @@ import { desc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { dsarRequests, orgs } from "@/lib/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import Nav from "@/components/Nav";
+import AppShell from "@/components/AppShell";
 import { DSAR_REQUEST_TYPE_LABELS, DSAR_STATUS_LABELS } from "@/lib/dsar/types";
 
 function fmtDate(d: Date | string | null): string {
@@ -46,8 +46,7 @@ export default async function DsarDashboardPage() {
   const breachRate = withSla.length > 0 ? Math.round((breached.length / withSla.length) * 100) : null;
 
   return (
-    <>
-      <Nav />
+    <AppShell>
       <main style={{ maxWidth: 1000, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
           <h1>DSAR requests</h1>
@@ -129,6 +128,6 @@ export default async function DsarDashboardPage() {
           </table>
         )}
       </main>
-    </>
+    </AppShell>
   );
 }

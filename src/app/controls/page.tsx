@@ -4,7 +4,7 @@ import { asc, eq, and } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { controlsLibrary, orgControls } from "@/lib/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import Nav from "@/components/Nav";
+import AppShell from "@/components/AppShell";
 import { listEvidenceForControls } from "@/lib/evidence";
 import { getMaturityByFunction } from "@/lib/assessments/maturity";
 import { MATURITY_LEVELS, MATURITY_LEVEL_LABELS } from "@/lib/assessments/types";
@@ -64,8 +64,7 @@ export default async function ControlsPage() {
   }
 
   return (
-    <>
-      <Nav />
+    <AppShell>
       <main style={{ maxWidth: 900, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
         <h1>Cyber controls</h1>
         <p>
@@ -229,6 +228,6 @@ export default async function ControlsPage() {
           </section>
         ))}
       </main>
-    </>
+    </AppShell>
   );
 }

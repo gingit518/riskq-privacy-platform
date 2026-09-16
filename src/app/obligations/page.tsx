@@ -5,7 +5,7 @@ import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { orgObligations } from "@/lib/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import Nav from "@/components/Nav";
+import AppShell from "@/components/AppShell";
 import { listEvidenceForObligations } from "@/lib/evidence";
 import { listOrgUsers } from "@/lib/org/users";
 import {
@@ -52,8 +52,7 @@ export default async function ObligationsPage() {
 
   if (rows.length === 0) {
     return (
-      <>
-        <Nav />
+      <AppShell>
         <main style={{ maxWidth: 900, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
           <h1>Business obligations</h1>
           <p>
@@ -61,7 +60,7 @@ export default async function ObligationsPage() {
             a profile. <Link href="/profile">Complete your company profile</Link> first.
           </p>
         </main>
-      </>
+      </AppShell>
     );
   }
 
@@ -73,8 +72,7 @@ export default async function ObligationsPage() {
   }
 
   return (
-    <>
-      <Nav />
+    <AppShell>
       <main style={{ maxWidth: 900, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
         <h1>Business obligations</h1>
         <p>
@@ -187,6 +185,6 @@ export default async function ObligationsPage() {
           );
         })}
       </main>
-    </>
+    </AppShell>
   );
 }
