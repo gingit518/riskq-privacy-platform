@@ -21,6 +21,9 @@ export default function Nav() {
         alignItems: "center",
       }}
     >
+      <Link href="/summary" style={linkStyle}>
+        Summary
+      </Link>
       <Link href="/profile" style={linkStyle}>
         Profile
       </Link>

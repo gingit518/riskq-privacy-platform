@@ -15,6 +15,7 @@ import {
   dsarChecklistTemplates,
   dsarSystemTasks,
   orgs,
+  users,
 } from "@/lib/db/schema";
 import type { ConnectorId } from "@/lib/connectors/types";
 import {
@@ -79,7 +80,10 @@ export async function updateDsarStatus(formData: FormData): Promise<void> {
 
   const id = String(formData.get("id") || "");
   const status = String(formData.get("status") || "") as DsarStatus;
-  const owner = String(formData.get("owner") || "");
+  // ownerId replaces the free-text owner box as of 2026-09-16 (Management
+  // Summary View / "My Pending" — see schema.ts's dsar_requests.ownerId
+  // comment). Empty string from the "Unassigned" option means null.
+  const ownerIdRaw = String(formData.get("ownerId") || "");
   const notes = String(formData.get("notes") || "");
   if (!id || !DSAR_STATUSES.includes(status)) return;
 
@@ -93,11 +97,28 @@ export async function updateDsarStatus(formData: FormData): Promise<void> {
 
   const isClosing = status === "completed" || status === "denied";
 
+  let ownerId: string | null = null;
+  let owner = "";
+  if (ownerIdRaw) {
+    // Re-verified against this org — a tampered ownerId for a different
+    // org's user must not silently assign across tenants.
+    const [assignee] = await db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(and(eq(users.id, ownerIdRaw), eq(users.orgId, session.orgId)))
+      .limit(1);
+    if (assignee) {
+      ownerId = assignee.id;
+      owner = assignee.email; // denormalized display copy — see schema.ts comment
+    }
+  }
+
   await db
     .update(dsarRequests)
     .set({
       status,
       owner,
+      ownerId,
       notes,
       closedAt: isClosing ? new Date() : null,
     })

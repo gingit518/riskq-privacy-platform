@@ -20,7 +20,7 @@
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { orgObligations } from "@/lib/db/schema";
+import { orgObligations, users } from "@/lib/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { uploadEvidence } from "@/lib/evidence";
 import {
@@ -81,16 +81,39 @@ export async function updateObligation(formData: FormData): Promise<void> {
     | "in_progress"
     | "done"
     | "not_applicable";
-  const owner = String(formData.get("owner") || "");
+  // ownerId replaces the free-text owner box as of 2026-09-16 (Management
+  // Summary View / "My Pending" — see schema.ts's org_obligations.ownerId
+  // comment for why the old text column is kept rather than dropped). Empty
+  // string from the "Unassigned" option means null, not a real user id.
+  const ownerIdRaw = String(formData.get("ownerId") || "");
   const dueDateRaw = String(formData.get("dueDate") || "");
   const evidenceNote = String(formData.get("evidenceNote") || "");
 
   const db = getDb();
+
+  let ownerId: string | null = null;
+  let owner = "";
+  if (ownerIdRaw) {
+    // Re-verified against this org, not trusted from the form as-is — a
+    // tampered ownerId for a different org's user must not silently assign
+    // across tenants.
+    const [assignee] = await db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(and(eq(users.id, ownerIdRaw), eq(users.orgId, session.orgId)))
+      .limit(1);
+    if (assignee) {
+      ownerId = assignee.id;
+      owner = assignee.email; // denormalized display copy — see schema.ts comment
+    }
+  }
+
   await db
     .update(orgObligations)
     .set({
       status,
       owner,
+      ownerId,
       dueDate: dueDateRaw ? new Date(dueDateRaw) : null,
       evidenceNote,
       updatedAt: new Date(),

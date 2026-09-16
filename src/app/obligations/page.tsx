@@ -7,6 +7,7 @@ import { orgObligations } from "@/lib/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import Nav from "@/components/Nav";
 import { listEvidenceForObligations } from "@/lib/evidence";
+import { listOrgUsers } from "@/lib/org/users";
 import {
   syncObligationsFromScope,
   updateObligation,
@@ -37,6 +38,7 @@ export default async function ObligationsPage() {
     .orderBy(asc(orgObligations.regulationAcronym), asc(orgObligations.createdAt));
 
   const inScopeAcronyms = await getCurrentInScopeAcronyms(session.orgId);
+  const orgUsers = await listOrgUsers(session.orgId);
   const evidenceRows = await listEvidenceForObligations(
     session.orgId,
     rows.map((r) => r.id)
@@ -124,12 +126,14 @@ export default async function ObligationsPage() {
                               </option>
                             ))}
                           </select>
-                          <input
-                            name="owner"
-                            defaultValue={row.owner}
-                            placeholder="Owner"
-                            style={{ width: 100 }}
-                          />
+                          <select name="ownerId" defaultValue={row.ownerId ?? ""} style={{ width: 140 }}>
+                            <option value="">Unassigned</option>
+                            {orgUsers.map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.email}
+                              </option>
+                            ))}
+                          </select>
                           <input
                             type="date"
                             name="dueDate"

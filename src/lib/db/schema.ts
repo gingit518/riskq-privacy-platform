@@ -123,7 +123,20 @@ export const orgObligations = pgTable("org_obligations", {
   regulationName: text("regulation_name").notNull(),
   obligationText: text("obligation_text").notNull(),
   status: obligationStatusEnum("status").notNull().default("not_started"),
+  // Legacy free-text owner (kept for historical rows — see ownerId comment
+  // below, added 2026-09-16 for the Management Summary View's "My Pending"
+  // feature). Still written on every save (denormalized display copy of the
+  // assigned user's email) so nothing that reads this column needs to
+  // change.
   owner: text("owner").notNull().default(""),
+  // Real per-user assignment, added 2026-09-16 alongside the free-text
+  // `owner` above rather than replacing it — existing rows' typed-in owner
+  // text (e.g. "Legal team", a name with no account) has no reliable way to
+  // map onto a real user, so old rows simply have ownerId = null (shown as
+  // unassigned) until someone re-picks an owner via the new UI. New
+  // assignments and the "My Pending" summary query both use this column,
+  // not the text one. Nullable: an obligation can be unassigned.
+  ownerId: uuid("owner_id").references(() => users.id, { onDelete: "set null" }),
   dueDate: timestamp("due_date", { withTimezone: true }),
   evidenceNote: text("evidence_note").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -267,7 +280,15 @@ export const dsarRequests = pgTable("dsar_requests", {
   identityVerified: boolean("identity_verified").notNull().default(false),
   identityVerifiedAt: timestamp("identity_verified_at", { withTimezone: true }),
   identityVerifiedBy: uuid("identity_verified_by").references(() => users.id),
+  // Legacy free-text owner — see the matching comment on
+  // org_obligations.owner/ownerId above (both added together, 2026-09-16).
+  // Still written on every save as a denormalized display copy.
   owner: text("owner").notNull().default(""),
+  // Real per-user assignment — same reasoning as org_obligations.ownerId:
+  // added alongside the free-text field rather than replacing it, since old
+  // rows' owner text can't be reliably mapped to a real account. Nullable:
+  // a request can be unassigned.
+  ownerId: uuid("owner_id").references(() => users.id, { onDelete: "set null" }),
   notes: text("notes").notNull().default(""),
   // "public" (submitted via the unauthenticated /intake/[slug] form) or
   // "internal" (staff manual entry) — both write to this same table.

@@ -20,6 +20,7 @@ import { listEvidenceForDsarRequest } from "@/lib/evidence";
 import { listRunsWithMatches } from "@/lib/dsar/connector-fulfillment";
 import { listConnections } from "@/lib/connectors/connections";
 import { listConnectorInfo } from "@/lib/connectors/registry";
+import { listOrgUsers } from "@/lib/org/users";
 import {
   updateDsarStatus,
   verifyIdentity,
@@ -78,6 +79,7 @@ export default async function DsarRequestDetailPage({ params }: { params: { id: 
     .filter((c) => c.active)
     .map((c) => ({ connectorId: c.connectorId, label: connectorLabelOf(c.connectorId) }));
   const runsWithMatches = await listRunsWithMatches(session.orgId, request.id);
+  const orgUsers = await listOrgUsers(session.orgId);
 
   const dueDateText = request.slaDueAt ? fmtDateTime(request.slaDueAt) : "";
 
@@ -188,7 +190,14 @@ export default async function DsarRequestDetailPage({ params }: { params: { id: 
           </label>
           <label style={{ display: "block", marginBottom: 8 }}>
             Owner
-            <input name="owner" defaultValue={request.owner} style={{ display: "block", width: 300 }} />
+            <select name="ownerId" defaultValue={request.ownerId ?? ""} style={{ display: "block", width: 300 }}>
+              <option value="">Unassigned</option>
+              {orgUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.email}
+                </option>
+              ))}
+            </select>
           </label>
           <label style={{ display: "block", marginBottom: 8 }}>
             Notes
