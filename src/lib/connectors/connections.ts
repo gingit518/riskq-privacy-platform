@@ -70,6 +70,35 @@ export async function connectMock(params: {
  * replaces the stored token and reactivates the row rather than creating a
  * second connector_connections row for the same org+connector, which would
  * violate that unique index anyway. */
+/** Persists a rotated refresh token onto the existing active connection row,
+ * without touching accountLabel/connectedBy. Salesforce can (and, per live
+ * testing 2026-09-16, does) return a new refresh_token in the response to a
+ * grant_type=refresh_token call — when it does, the old refresh token is
+ * invalidated immediately. salesforce.ts's refreshAccessToken() calls this
+ * whenever the token response includes one, so the next operation (search,
+ * export, delete) uses the current token instead of a stale one Salesforce
+ * has already rotated past. No-ops if there's no active row — that
+ * shouldn't happen in practice since this only runs right after a
+ * successful refresh against an existing connection, but a disconnect
+ * racing a refresh isn't worth throwing over. */
+export async function updateRefreshToken(
+  orgId: string,
+  connectorId: ConnectorId,
+  refreshToken: string
+): Promise<void> {
+  const db = getDb();
+  await db
+    .update(connectorConnections)
+    .set({ encryptedRefreshToken: encryptSecret(refreshToken) })
+    .where(
+      and(
+        eq(connectorConnections.orgId, orgId),
+        eq(connectorConnections.connectorId, connectorId),
+        eq(connectorConnections.active, true)
+      )
+    );
+}
+
 export async function upsertConnection(params: {
   orgId: string;
   connectorId: ConnectorId;

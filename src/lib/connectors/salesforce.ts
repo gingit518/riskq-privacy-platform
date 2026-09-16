@@ -22,7 +22,7 @@
 // human-readable display value only, not for routing API calls).
 
 import type { DsarConnector, MatchedRecord, ExportResult, DeleteResult } from "./types";
-import { getActiveConnection } from "./connections";
+import { getActiveConnection, updateRefreshToken } from "./connections";
 import { decryptSecret } from "./crypto";
 
 export function isSalesforceConfigured(): boolean {
@@ -73,10 +73,24 @@ async function refreshAccessToken(orgId: string): Promise<{ accessToken: string;
     throw new Error(`Salesforce token refresh failed (${res.status}): ${detail.slice(0, 300)}`);
   }
 
-  const json = (await res.json()) as { access_token?: string; instance_url?: string };
+  const json = (await res.json()) as { access_token?: string; instance_url?: string; refresh_token?: string };
   if (!json.access_token || !json.instance_url) {
     throw new Error("Salesforce token refresh response missing access_token/instance_url.");
   }
+
+  // Salesforce refresh-token rotation (confirmed live 2026-09-16): a
+  // grant_type=refresh_token call can come back with a NEW refresh_token,
+  // which immediately invalidates the one we sent. If we don't persist it,
+  // the next operation (e.g. export right after search) reuses the
+  // now-stale token from the DB and fails with invalid_grant/expired
+  // access-refresh-token even though the connection is perfectly healthy.
+  // Only Salesforce's OWN response tells us whether rotation happened on
+  // this call — some orgs/policies rotate, some don't — so this check has
+  // to run on every refresh, not just once.
+  if (json.refresh_token && json.refresh_token !== refreshToken) {
+    await updateRefreshToken(orgId, "salesforce", json.refresh_token);
+  }
+
   return { accessToken: json.access_token, instanceUrl: json.instance_url };
 }
 
