@@ -6,16 +6,9 @@ import { dsarRequests, orgs } from "@/lib/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import AppShell from "@/components/AppShell";
 import Card from "@/components/Card";
-import Badge, { type BadgeVariant } from "@/components/Badge";
-import { DSAR_REQUEST_TYPE_LABELS, DSAR_STATUS_LABELS, type DsarStatus } from "@/lib/dsar/types";
-
-const STATUS_BADGE: Record<DsarStatus, BadgeVariant> = {
-  intake: "neutral",
-  verifying: "warning",
-  in_progress: "warning",
-  completed: "success",
-  denied: "danger",
-};
+import Badge from "@/components/Badge";
+import { DSAR_REQUEST_TYPE_LABELS, DSAR_STATUS_LABELS } from "@/lib/dsar/types";
+import { DSAR_STATUS_BADGE } from "@/lib/dsar/status-badge";
 
 function fmtDate(d: Date | string | null): string {
   if (!d) return "—";
@@ -159,7 +152,7 @@ export default async function DsarDashboardPage() {
                       </td>
                       <td style={{ padding: "10px 16px" }}>{DSAR_REQUEST_TYPE_LABELS[r.requestType]}</td>
                       <td style={{ padding: "10px 16px" }}>
-                        <Badge variant={STATUS_BADGE[r.status]}>{DSAR_STATUS_LABELS[r.status]}</Badge>
+                        <Badge variant={DSAR_STATUS_BADGE[r.status]}>{DSAR_STATUS_LABELS[r.status]}</Badge>
                       </td>
                       <td style={{ padding: "10px 16px", fontSize: 12, color: "var(--pq-ink-muted)" }}>
                         {r.governingRegulationAcronym ?? "none (no statutory SLA)"}

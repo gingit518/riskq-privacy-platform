@@ -5,6 +5,7 @@
 // lib/dsar/templates.ts for why there's no send-email capability here).
 
 import { useState } from "react";
+import Button from "@/components/Button";
 
 interface Templates {
   acknowledgment: string;
@@ -29,22 +30,26 @@ function TemplateBlock({ title, text }: { title: string; text: string }) {
 
   return (
     <div style={{ marginBottom: 16 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <strong>{title}</strong>
-        <button type="button" onClick={onCopy}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+        <strong style={{ fontSize: 13.5 }}>{title}</strong>
+        <Button type="button" variant="secondary" onClick={onCopy}>
           {copied ? "Copied!" : "Copy"}
-        </button>
+        </Button>
       </div>
-      <textarea readOnly value={text} rows={6} style={{ width: "100%", fontFamily: "inherit" }} />
+      <textarea
+        readOnly
+        value={text}
+        rows={6}
+        style={{ width: "100%", fontFamily: "inherit", fontSize: 13, borderRadius: 8 }}
+      />
     </div>
   );
 }
 
 export default function ResponseTemplates({ templates }: { templates: Templates }) {
   return (
-    <div style={{ marginBottom: 24 }}>
-      <h2>Response templates</h2>
-      <p style={{ color: "#666", fontSize: 13 }}>
+    <div>
+      <p style={{ color: "var(--pq-ink-muted)", fontSize: 13, marginTop: 0 }}>
         Copy into your own email client — this app doesn&apos;t send email yet.
       </p>
       <TemplateBlock title="Acknowledgment" text={templates.acknowledgment} />

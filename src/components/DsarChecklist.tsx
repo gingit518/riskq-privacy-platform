@@ -20,13 +20,17 @@ export default function DsarChecklist({
   items: ChecklistItem[];
   toggleAction: (formData: FormData) => void | Promise<void>;
 }) {
+  if (items.length === 0) {
+    return <p style={{ color: "var(--pq-ink-muted)", fontSize: 13, margin: 0 }}>No checklist items.</p>;
+  }
+
   return (
-    <ul style={{ listStyle: "none", padding: 0, marginBottom: 24 }}>
+    <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
       {items.map((item) => (
-        <li key={item.id}>
+        <li key={item.id} style={{ padding: "6px 0", borderTop: "1px solid var(--pq-line)" }}>
           <form
             action={toggleAction}
-            style={{ display: "flex", alignItems: "center", gap: 8 }}
+            style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5 }}
           >
             <input type="hidden" name="itemId" value={item.id} />
             <input type="hidden" name="requestId" value={requestId} />
@@ -40,7 +44,7 @@ export default function DsarChecklist({
               {item.label}
             </span>
             {item.done && item.doneAt && (
-              <span style={{ color: "#666", fontSize: 12 }}>
+              <span style={{ color: "var(--pq-ink-muted)", fontSize: 12 }}>
                 — {new Date(item.doneAt).toLocaleString()}
               </span>
             )}
