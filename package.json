@@ -2,7 +2,7 @@
   "name": "riskq-privacy-platform",
   "version": "0.1.0",
   "private": true,
-  "description": "RiskQ Privacy Compliance Platform — multi-tenant regulatory scoping, business obligations, cyber controls with maturity scoring, DSAR with fulfillment automation and an assisted-connector approval-gate framework (Salesforce/M365/Google Drive, real API calls not yet wired), RoPA/DPIA assessments, international transfers, tracking technologies registry, and a compliance dashboard with CSV/PDF export (Phase 1+2+3+3.1+4+5+7).",
+  "description": "RiskQ Privacy Management Platform — multi-tenant regulatory scoping, business obligations, cyber controls with maturity scoring, DSAR with fulfillment automation and an assisted-connector approval-gate framework (Salesforce/M365/Google Drive, real API calls not yet wired), RoPA/DPIA assessments, international transfers, tracking technologies registry, and a compliance dashboard with CSV/PDF export (Phase 1+2+3+3.1+4+5+7).",
   "type": "module",
   "scripts": {
     "dev": "next dev",

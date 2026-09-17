@@ -1,4 +1,4 @@
-# RiskQ Privacy Compliance Platform — Phase 1 + 2 + 3 + 3.1 + 4 + 5 + 7 scaffold
+# RiskQ Privacy Management Platform — Phase 1 + 2 + 3 + 3.1 + 4 + 5 + 7 scaffold
 
 Multi-tenant SaaS privacy compliance platform. Phase 1 = Regulatory
 Management, the module every other module (Business Obligations, DSAR,

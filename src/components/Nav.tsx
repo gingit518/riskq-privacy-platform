@@ -155,7 +155,7 @@ export default function Nav() {
             marginTop: 4,
           }}
         >
-          Compliance Platform
+          Privacy Management Platform
         </div>
       </div>
 
