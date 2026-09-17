@@ -1,10 +1,16 @@
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth/session";
 import AppShell from "@/components/AppShell";
+import Card from "@/components/Card";
+import Badge from "@/components/Badge";
+import Button from "@/components/Button";
 import { listConnectorInfo } from "@/lib/connectors/registry";
 import { listConnections } from "@/lib/connectors/connections";
 import { connectMockAction, disconnectConnectorAction } from "./actions";
 
+/** Connectors, reskinned Batch 8 (PRD §5.12) alongside Compliance,
+ * Regulations/scope, and Profile — direct token application, no mockup.
+ * Data queries/actions unchanged. */
 export default async function ConnectorsPage({
   searchParams,
 }: {
@@ -19,22 +25,12 @@ export default async function ConnectorsPage({
 
   return (
     <AppShell>
-      <main style={{ maxWidth: 700, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
-        <h1>Connectors</h1>
+      <div style={{ padding: "24px 28px", maxWidth: 700 }}>
+        <h1 style={{ marginTop: 0 }}>Connectors</h1>
         {searchParams.connectorMessage && (
-          <p
-            style={{
-              background: "#f5f5f5",
-              border: "1px solid #ddd",
-              borderRadius: 4,
-              padding: "10px 12px",
-              fontSize: 14,
-            }}
-          >
-            {searchParams.connectorMessage}
-          </p>
+          <Card style={{ marginBottom: 16 }}>{searchParams.connectorMessage}</Card>
         )}
-        <p style={{ color: "#666", fontSize: 14 }}>
+        <p style={{ color: "var(--pq-ink-muted)", fontSize: 14 }}>
           Connect systems here so a DSAR request can search them for a
           requester&apos;s data (§5.10). Every match found still requires a
           human to review and approve before anything is exported or deleted
@@ -50,52 +46,58 @@ export default async function ConnectorsPage({
           )}
         </p>
 
-        <ul style={{ paddingLeft: 0, listStyle: "none" }}>
-          {info.map((c) => {
+        <Card style={{ padding: 0, overflow: "hidden" }}>
+          {info.map((c, i) => {
             const conn = connections.find((row) => row.connectorId === c.id && row.active);
             return (
-              <li
+              <div
                 key={c.id}
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  padding: "12px 0",
-                  borderBottom: "1px solid #eee",
+                  padding: "14px 18px",
+                  borderTop: i === 0 ? "none" : "1px solid var(--pq-line)",
                 }}
               >
                 <div>
-                  <strong>{c.label}</strong>
-                  <div style={{ fontSize: 13, color: "#666" }}>
+                  <div style={{ fontSize: 13.5, marginBottom: 4 }}>
+                    <strong>{c.label}</strong>
+                  </div>
+                  <Badge variant={conn ? "success" : c.configured ? "neutral" : "danger"}>
                     {conn
                       ? `Connected — ${conn.accountLabel || "no label"}`
                       : c.configured
                         ? "Not connected"
                         : "Not configured for this deployment yet — see README \"Phase 7\""}
-                  </div>
+                  </Badge>
                 </div>
                 {conn ? (
                   <form action={disconnectConnectorAction}>
                     <input type="hidden" name="connectorId" value={c.id} />
-                    <button type="submit">Disconnect</button>
+                    <Button type="submit" variant="secondary">
+                      Disconnect
+                    </Button>
                   </form>
                 ) : mockMode ? (
                   <form action={connectMockAction}>
                     <input type="hidden" name="connectorId" value={c.id} />
-                    <button type="submit">Connect (mock)</button>
+                    <Button type="submit" variant="primary">
+                      Connect (mock)
+                    </Button>
                   </form>
                 ) : (
                   <a href={`/api/connectors/${c.id}/authorize`}>
-                    <button type="button" disabled={!c.configured}>
+                    <Button type="button" variant="primary" disabled={!c.configured}>
                       Connect
-                    </button>
+                    </Button>
                   </a>
                 )}
-              </li>
+              </div>
             );
           })}
-        </ul>
-      </main>
+        </Card>
+      </div>
     </AppShell>
   );
 }

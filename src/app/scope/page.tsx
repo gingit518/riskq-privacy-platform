@@ -5,6 +5,8 @@ import { getDb } from "@/lib/db";
 import { orgRegulationScope } from "@/lib/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import AppShell from "@/components/AppShell";
+import Card from "@/components/Card";
+import Badge from "@/components/Badge";
 
 interface ScopedTest {
   label: string;
@@ -22,6 +24,10 @@ interface ScopedResult {
   tests: ScopedTest[];
 }
 
+/** Applicable Regulations (scope), reskinned Batch 8 (PRD §5.12) — the last
+ * page in this UI redesign pass, alongside Compliance, Connectors, and
+ * Profile. No mockup exists for this page — direct token application.
+ * Data query unchanged. */
 export default async function ScopePage() {
   const session = await requireSession();
   if (!session) redirect("/login");
@@ -37,13 +43,13 @@ export default async function ScopePage() {
   if (!latest) {
     return (
       <AppShell>
-      <main style={{ maxWidth: 720, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
-        <h1>Applicable regulations</h1>
-        <p>
-          No profile analyzed yet. <Link href="/profile">Complete your company profile</Link> to
-          compute scope.
-        </p>
-      </main>
+        <div style={{ padding: "24px 28px", maxWidth: 720 }}>
+          <h1 style={{ marginTop: 0 }}>Applicable regulations</h1>
+          <p>
+            No profile analyzed yet. <Link href="/profile">Complete your company profile</Link> to
+            compute scope.
+          </p>
+        </div>
       </AppShell>
     );
   }
@@ -55,42 +61,55 @@ export default async function ScopePage() {
 
   return (
     <AppShell>
-    <main style={{ maxWidth: 900, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
-      <h1>Applicable regulations</h1>
-      <p>
-        Computed {new Date(latest.computedAt as unknown as string).toLocaleString()} ·{" "}
-        {results.length} regulations checked.
-      </p>
+      <div style={{ padding: "24px 28px", maxWidth: 900 }}>
+        <h1 style={{ marginTop: 0 }}>Applicable regulations</h1>
+        <p style={{ color: "var(--pq-ink-muted)", fontSize: 14 }}>
+          Computed {new Date(latest.computedAt as unknown as string).toLocaleString()} ·{" "}
+          {results.length} regulations checked.
+        </p>
 
-      <h2>In scope ({inScope.length})</h2>
-      <ul>
-        {inScope.map((r) => (
-          <li key={r.acronym}>
-            <strong>{r.acronym}</strong> — {r.name} ({r.group})
-          </li>
-        ))}
-        {inScope.length === 0 && <li style={{ color: "#666" }}>None.</li>}
-      </ul>
+        <Card title={`In scope (${inScope.length})`} style={{ marginBottom: 16 }}>
+          {inScope.length === 0 ? (
+            <p style={{ color: "var(--pq-ink-muted)", margin: 0 }}>None.</p>
+          ) : (
+            <ul style={{ paddingLeft: 0, listStyle: "none", margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+              {inScope.map((r) => (
+                <li key={r.acronym} style={{ fontSize: 14 }}>
+                  <strong>{r.acronym}</strong> — {r.name}{" "}
+                  <Badge variant="success">{r.group}</Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
 
-      <h2>Watch — approaching a threshold ({watch.length})</h2>
-      <ul>
-        {watch.map((r) => (
-          <li key={r.acronym}>
-            <strong>{r.acronym}</strong> — {r.name} ({r.group})
-          </li>
-        ))}
-        {watch.length === 0 && <li style={{ color: "#666" }}>None.</li>}
-      </ul>
+        <Card title={`Watch — approaching a threshold (${watch.length})`} style={{ marginBottom: 16 }}>
+          {watch.length === 0 ? (
+            <p style={{ color: "var(--pq-ink-muted)", margin: 0 }}>None.</p>
+          ) : (
+            <ul style={{ paddingLeft: 0, listStyle: "none", margin: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+              {watch.map((r) => (
+                <li key={r.acronym} style={{ fontSize: 14 }}>
+                  <strong>{r.acronym}</strong> — {r.name}{" "}
+                  <Badge variant="warning">{r.group}</Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
 
-      <h2>Out of scope ({outOfScope.length})</h2>
-      <p style={{ color: "#666" }}>{outOfScope.map((r) => r.acronym).join(", ") || "—"}</p>
+        <Card title={`Out of scope (${outOfScope.length})`} style={{ marginBottom: 20 }}>
+          <p style={{ color: "var(--pq-ink-muted)", margin: 0, fontSize: 14 }}>
+            {outOfScope.map((r) => r.acronym).join(", ") || "—"}
+          </p>
+        </Card>
 
-      <p style={{ marginTop: 32 }}>
-        <Link href="/profile">Update profile &amp; re-analyze</Link> ·{" "}
-        <Link href="/obligations">View business obligations</Link> ·{" "}
-        <Link href="/controls">View cyber controls</Link>
-      </p>
-    </main>
+        <p style={{ fontSize: 13.5 }}>
+          <Link href="/profile">Update profile &amp; re-analyze</Link> ·{" "}
+          <Link href="/obligations">View business obligations</Link> ·{" "}
+          <Link href="/controls">View cyber controls</Link>
+        </p>
+      </div>
     </AppShell>
   );
 }

@@ -2,21 +2,32 @@ import { redirect } from "next/navigation";
 import { desc, inArray } from "drizzle-orm";
 import { requireSession } from "@/lib/auth/session";
 import AppShell from "@/components/AppShell";
+import Card from "@/components/Card";
+import Badge, { type BadgeVariant } from "@/components/Badge";
 import { getDb } from "@/lib/db";
 import { dsarEvents, dsarRequests } from "@/lib/db/schema";
 import { computeComplianceSummary } from "@/lib/compliance/score";
 
-function scoreColor(score: number | null): string {
-  if (score === null) return "#f5f5f5";
-  if (score >= 80) return "#ecfdf5";
-  if (score >= 50) return "#fff7ed";
-  return "#fef2f2";
+function scoreVariant(score: number | null): BadgeVariant {
+  if (score === null) return "neutral";
+  if (score >= 80) return "success";
+  if (score >= 50) return "warning";
+  return "danger";
+}
+
+function scoreBg(score: number | null): string {
+  const v = scoreVariant(score);
+  return v === "neutral" ? "var(--pq-surface)" : `var(--pq-${v}-bg)`;
 }
 
 function fmt(v: number | null): string {
   return v === null ? "n/a" : `${v}%`;
 }
 
+/** Compliance dashboard, reskinned Batch 8 (PRD §5.12) — the last batch in
+ * this UI redesign pass, alongside Connectors, Regulations/scope, and
+ * Profile. No mockup exists for this page — direct token application, same
+ * treatment as every batch since Batch 6. Data queries unchanged. */
 export default async function CompliancePage() {
   const session = await requireSession();
   if (!session) redirect("/login");
@@ -46,9 +57,9 @@ export default async function CompliancePage() {
 
   return (
     <AppShell>
-      <main style={{ maxWidth: 900, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
-        <h1>Compliance dashboard</h1>
-        <p style={{ color: "#666", fontSize: 14 }}>
+      <div style={{ padding: "24px 28px", maxWidth: 980 }}>
+        <h1 style={{ marginTop: 0 }}>Compliance dashboard</h1>
+        <p style={{ color: "var(--pq-ink-muted)", fontSize: 14 }}>
           A self-reported operational summary, not a certification or legal determination of
           compliance. Blended score = unweighted average of obligations-done %, DSAR SLA-met %,
           and controls-implemented % — the controls figure is measured only at the broad
@@ -58,74 +69,110 @@ export default async function CompliancePage() {
           average, never counted as zero.
         </p>
 
-        <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
-          <a href="/compliance/export/csv" style={{ padding: "6px 12px", background: "#f5f5f5", textDecoration: "none", color: "inherit" }}>
-            Export CSV
+        <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+          <a href="/compliance/export/csv" style={{ textDecoration: "none" }}>
+            <span
+              style={{
+                display: "inline-block",
+                padding: "6px 14px",
+                background: "var(--pq-surface)",
+                border: "1px solid var(--pq-line)",
+                borderRadius: 8,
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: "var(--pq-ink)",
+              }}
+            >
+              Export CSV
+            </span>
           </a>
-          <a href="/compliance/export/pdf" style={{ padding: "6px 12px", background: "#f5f5f5", textDecoration: "none", color: "inherit" }}>
-            Export PDF
+          <a href="/compliance/export/pdf" style={{ textDecoration: "none" }}>
+            <span
+              style={{
+                display: "inline-block",
+                padding: "6px 14px",
+                background: "var(--pq-surface)",
+                border: "1px solid var(--pq-line)",
+                borderRadius: 8,
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: "var(--pq-ink)",
+              }}
+            >
+              Export PDF
+            </span>
           </a>
         </div>
 
         {!summary.hasScopeRun ? (
-          <p style={{ padding: 8, background: "#fef2f2" }}>
+          <Card style={{ marginBottom: 24, background: "var(--pq-danger-bg)" }}>
             No regulatory scope analyzed yet — go to <a href="/profile">Profile</a> and run
             &quot;Save &amp; analyze scope&quot; first.
-          </p>
+          </Card>
         ) : summary.perRegulation.length === 0 ? (
-          <p style={{ padding: 8, background: "#f5f5f5" }}>No regulations are currently in scope.</p>
+          <Card style={{ marginBottom: 24 }}>No regulations are currently in scope.</Card>
         ) : (
           <>
-            <p style={{ padding: 8, background: scoreColor(summary.overallScore), display: "inline-block" }}>
-              Overall blended score: <strong>{fmt(summary.overallScore)}</strong>
-            </p>
+            <div style={{ marginBottom: 16 }}>
+              <Badge variant={scoreVariant(summary.overallScore)}>
+                Overall blended score: {fmt(summary.overallScore)}
+              </Badge>
+            </div>
 
-            <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 16, marginBottom: 32 }}>
-              <thead>
-                <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
-                  <th style={{ padding: 4 }}>Regulation</th>
-                  <th style={{ padding: 4 }}>Group</th>
-                  <th style={{ padding: 4 }}>Obligations</th>
-                  <th style={{ padding: 4 }}>DSAR SLA met</th>
-                  <th style={{ padding: 4 }}>Controls (group)</th>
-                  <th style={{ padding: 4 }}>Blended</th>
-                </tr>
-              </thead>
-              <tbody>
-                {summary.perRegulation.map((r) => (
-                  <tr key={r.acronym} style={{ borderBottom: "1px solid #eee", background: scoreColor(r.blendedScore) }}>
-                    <td style={{ padding: 4 }}>
-                      <strong>{r.acronym}</strong>
-                      <div style={{ fontSize: 12, color: "#666" }}>{r.name}</div>
-                    </td>
-                    <td style={{ padding: 4, fontSize: 13 }}>{r.group}</td>
-                    <td style={{ padding: 4, fontSize: 13 }}>{fmt(r.obligationsPct)}</td>
-                    <td style={{ padding: 4, fontSize: 13 }}>{fmt(r.dsarSlaPct)}</td>
-                    <td style={{ padding: 4, fontSize: 13 }}>{fmt(r.controlsPct)}</td>
-                    <td style={{ padding: 4, fontWeight: 600 }}>{fmt(r.blendedScore)}</td>
+            <Card style={{ marginBottom: 24, padding: 0, overflow: "hidden" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+                <thead>
+                  <tr style={{ textAlign: "left", color: "var(--pq-ink-muted)" }}>
+                    <th style={{ padding: "10px 16px", fontWeight: 500 }}>Regulation</th>
+                    <th style={{ padding: "10px 16px", fontWeight: 500 }}>Group</th>
+                    <th style={{ padding: "10px 16px", fontWeight: 500 }}>Obligations</th>
+                    <th style={{ padding: "10px 16px", fontWeight: 500 }}>DSAR SLA met</th>
+                    <th style={{ padding: "10px 16px", fontWeight: 500 }}>Controls (group)</th>
+                    <th style={{ padding: "10px 16px", fontWeight: 500 }}>Blended</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {summary.perRegulation.map((r) => (
+                    <tr
+                      key={r.acronym}
+                      style={{ borderTop: "1px solid var(--pq-line)", background: scoreBg(r.blendedScore) }}
+                    >
+                      <td style={{ padding: "10px 16px" }}>
+                        <strong>{r.acronym}</strong>
+                        <div style={{ fontSize: 12, color: "var(--pq-ink-muted)" }}>{r.name}</div>
+                      </td>
+                      <td style={{ padding: "10px 16px" }}>{r.group}</td>
+                      <td style={{ padding: "10px 16px" }}>{fmt(r.obligationsPct)}</td>
+                      <td style={{ padding: "10px 16px" }}>{fmt(r.dsarSlaPct)}</td>
+                      <td style={{ padding: "10px 16px" }}>{fmt(r.controlsPct)}</td>
+                      <td style={{ padding: "10px 16px", fontWeight: 600 }}>{fmt(r.blendedScore)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
           </>
         )}
 
-        <h2>Recent activity (DSAR only)</h2>
-        <p style={{ fontSize: 12, color: "#666" }}>
-          This is DSAR&apos;s own event log — the only real audit trail this app has today, not a
-          full cross-module log. Obligations and Cyber Controls changes aren&apos;t recorded as
-          events yet (known gap, see README).
-        </p>
-        <ul style={{ paddingLeft: 16, fontSize: 13 }}>
-          {recentEvents.map((e) => (
-            <li key={e.id}>
-              {new Date(e.createdAt as unknown as string).toLocaleString()} — {e.eventType}
-              {e.detail ? `: ${e.detail}` : ""}
-            </li>
-          ))}
-          {recentEvents.length === 0 && <li style={{ color: "#666" }}>No DSAR activity yet.</li>}
-        </ul>
-      </main>
+        <Card title="Recent activity (DSAR only)">
+          <p style={{ fontSize: 12, color: "var(--pq-ink-muted)" }}>
+            This is DSAR&apos;s own event log — the only real audit trail this app has today, not a
+            full cross-module log. Obligations and Cyber Controls changes aren&apos;t recorded as
+            events yet (known gap, see README).
+          </p>
+          <ul style={{ paddingLeft: 16, fontSize: 13, margin: 0 }}>
+            {recentEvents.map((e) => (
+              <li key={e.id}>
+                {new Date(e.createdAt as unknown as string).toLocaleString()} — {e.eventType}
+                {e.detail ? `: ${e.detail}` : ""}
+              </li>
+            ))}
+            {recentEvents.length === 0 && (
+              <li style={{ color: "var(--pq-ink-muted)" }}>No DSAR activity yet.</li>
+            )}
+          </ul>
+        </Card>
+      </div>
     </AppShell>
   );
 }
