@@ -2,6 +2,9 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { requireSession } from "@/lib/auth/session";
 import AppShell from "@/components/AppShell";
+import Card from "@/components/Card";
+import Badge from "@/components/Badge";
+import Button from "@/components/Button";
 import { listTransfers } from "@/lib/assessments/transfers";
 import { listActivities } from "@/lib/assessments/ropa";
 import {
@@ -12,6 +15,11 @@ import {
 } from "@/lib/assessments/types";
 import { createTransferAction, updateTransferAction } from "./actions";
 
+/** International Transfers, reskinned Batch 7 (PRD §5.12) alongside RoPA and
+ * Tracking Tech — direct token application, no dedicated mockup. Each row's
+ * inline status/mechanism form kept as-is (matches Cyber Controls' approach
+ * in Batch 6 — an edit-toggle here would add scope with no mockup calling
+ * for it). Data queries/actions unchanged. */
 export default async function TransfersPage() {
   const session = await requireSession();
   if (!session) redirect("/login");
@@ -25,134 +33,157 @@ export default async function TransfersPage() {
 
   return (
     <AppShell>
-      <main style={{ maxWidth: 900, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
-        <h1>International transfers</h1>
-        <p style={{ color: "#666", fontSize: 14 }}>
+      <div style={{ padding: "24px 28px", maxWidth: 980 }}>
+        <h1 style={{ marginTop: 0 }}>International transfers</h1>
+        <p style={{ color: "var(--pq-ink-muted)", fontSize: 14 }}>
           Cross-border personal data flows and the legal mechanism (if any) covering each one. No
           automated jurisdiction-conflict detection yet — this is a manual register, not a
           determination of what mechanism is actually required (PRD §9 caveat applies).
         </p>
 
         {gaps > 0 && (
-          <p style={{ padding: 8, background: "#fef2f2", color: "#b91c1c", display: "inline-block" }}>
+          <div
+            style={{
+              display: "inline-block",
+              padding: "8px 14px",
+              background: "var(--pq-danger-bg)",
+              color: "var(--pq-danger)",
+              borderRadius: 8,
+              fontSize: 13.5,
+              marginBottom: 16,
+            }}
+          >
             <strong>{gaps}</strong> transfer{gaps === 1 ? "" : "s"} with no mechanism in place.
-          </p>
+          </div>
         )}
 
-        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 32 }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
-              <th style={{ padding: 4 }}>From → To</th>
-              <th style={{ padding: 4 }}>Linked activity</th>
-              <th style={{ padding: 4 }}>Mechanism</th>
-              <th style={{ padding: 4 }}>Transfer impact assessment</th>
-              <th style={{ padding: 4 }}>Notes</th>
-              <th style={{ padding: 4 }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {transfers.map((t) => (
-              <tr
-                key={t.id}
-                style={{
-                  borderBottom: "1px solid #eee",
-                  background: t.mechanism === "none" ? "#fef2f2" : undefined,
-                }}
-              >
-                <td style={{ padding: 4, fontWeight: 600 }}>
-                  {t.fromJurisdiction} → {t.toJurisdiction}
-                </td>
-                <td style={{ padding: 4, fontSize: 13 }}>
-                  {t.activityId ? activityNameById.get(t.activityId) ?? "—" : "—"}
-                </td>
-                <td colSpan={3} style={{ padding: 0 }}>
-                  <form action={updateTransferAction} style={{ display: "flex", gap: 8, padding: 4 }}>
-                    <input type="hidden" name="id" value={t.id} />
-                    <select name="mechanism" defaultValue={t.mechanism}>
-                      {TRANSFER_MECHANISMS.map((m) => (
-                        <option key={m} value={m}>
-                          {TRANSFER_MECHANISM_LABELS[m]}
-                        </option>
-                      ))}
-                    </select>
-                    <select name="tiaStatus" defaultValue={t.tiaStatus}>
-                      {TIA_STATUSES.map((s) => (
-                        <option key={s} value={s}>
-                          {TIA_STATUS_LABELS[s]}
-                        </option>
-                      ))}
-                    </select>
-                    <input name="notes" defaultValue={t.notes} placeholder="Notes" style={{ flex: 1 }} />
-                    <button type="submit">Save</button>
-                  </form>
-                </td>
+        <Card style={{ marginBottom: 24, padding: 0, overflow: "hidden" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+            <thead>
+              <tr style={{ textAlign: "left", color: "var(--pq-ink-muted)" }}>
+                <th style={{ padding: "10px 16px", fontWeight: 500 }}>From → To</th>
+                <th style={{ padding: "10px 16px", fontWeight: 500 }}>Linked activity</th>
+                <th style={{ padding: "10px 16px", fontWeight: 500 }} colSpan={3}>
+                  Mechanism / status / notes
+                </th>
               </tr>
-            ))}
-            {transfers.length === 0 && (
-              <tr>
-                <td colSpan={6} style={{ padding: 8, color: "#666" }}>
-                  No transfers logged yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {transfers.map((t) => (
+                <tr
+                  key={t.id}
+                  style={{
+                    borderTop: "1px solid var(--pq-line)",
+                    background: t.mechanism === "none" ? "var(--pq-danger-bg)" : undefined,
+                  }}
+                >
+                  <td style={{ padding: "10px 16px", fontWeight: 600 }}>
+                    {t.fromJurisdiction} → {t.toJurisdiction}
+                    {t.mechanism === "none" && (
+                      <span style={{ marginLeft: 8 }}>
+                        <Badge variant="danger">No mechanism</Badge>
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ padding: "10px 16px" }}>
+                    {t.activityId ? activityNameById.get(t.activityId) ?? "—" : "—"}
+                  </td>
+                  <td colSpan={3} style={{ padding: 0 }}>
+                    <form action={updateTransferAction} style={{ display: "flex", gap: 8, padding: "8px 16px", alignItems: "center" }}>
+                      <input type="hidden" name="id" value={t.id} />
+                      <select name="mechanism" defaultValue={t.mechanism}>
+                        {TRANSFER_MECHANISMS.map((m) => (
+                          <option key={m} value={m}>
+                            {TRANSFER_MECHANISM_LABELS[m]}
+                          </option>
+                        ))}
+                      </select>
+                      <select name="tiaStatus" defaultValue={t.tiaStatus}>
+                        {TIA_STATUSES.map((s) => (
+                          <option key={s} value={s}>
+                            {TIA_STATUS_LABELS[s]}
+                          </option>
+                        ))}
+                      </select>
+                      <input name="notes" defaultValue={t.notes} placeholder="Notes" style={{ flex: 1 }} />
+                      <Button type="submit" variant="secondary">
+                        Save
+                      </Button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+              {transfers.length === 0 && (
+                <tr>
+                  <td colSpan={5} style={{ padding: 16, color: "var(--pq-ink-muted)" }}>
+                    No transfers logged yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </Card>
 
-        <h2>Log a transfer</h2>
-        <form action={createTransferAction} style={{ display: "grid", gap: 8, maxWidth: 480 }}>
-          <label>
-            From jurisdiction
-            <input name="fromJurisdiction" required placeholder="e.g. EU" style={{ display: "block", width: "100%" }} />
-          </label>
-          <label>
-            To jurisdiction
-            <input name="toJurisdiction" required placeholder="e.g. US" style={{ display: "block", width: "100%" }} />
-          </label>
-          <label>
-            Linked processing activity (optional)
-            <select name="activityId" defaultValue="" style={{ display: "block", width: "100%" }}>
-              <option value="">— None —</option>
-              {activities.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Mechanism
-            <select name="mechanism" defaultValue="none" style={{ display: "block", width: "100%" }}>
-              {TRANSFER_MECHANISMS.map((m) => (
-                <option key={m} value={m}>
-                  {TRANSFER_MECHANISM_LABELS[m]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Transfer impact assessment status
-            <select name="tiaStatus" defaultValue="not_started" style={{ display: "block", width: "100%" }}>
-              {TIA_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {TIA_STATUS_LABELS[s]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Notes
-            <textarea name="notes" rows={2} style={{ display: "block", width: "100%" }} />
-          </label>
-          <button type="submit">Log transfer</button>
-        </form>
+        <Card title="Log a transfer">
+          <form action={createTransferAction} style={{ display: "grid", gap: 10, maxWidth: 480 }}>
+            <label>
+              From jurisdiction
+              <input name="fromJurisdiction" required placeholder="e.g. EU" style={{ display: "block", width: "100%" }} />
+            </label>
+            <label>
+              To jurisdiction
+              <input name="toJurisdiction" required placeholder="e.g. US" style={{ display: "block", width: "100%" }} />
+            </label>
+            <label>
+              Linked processing activity (optional)
+              <select name="activityId" defaultValue="" style={{ display: "block", width: "100%" }}>
+                <option value="">— None —</option>
+                {activities.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Mechanism
+              <select name="mechanism" defaultValue="none" style={{ display: "block", width: "100%" }}>
+                {TRANSFER_MECHANISMS.map((m) => (
+                  <option key={m} value={m}>
+                    {TRANSFER_MECHANISM_LABELS[m]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Transfer impact assessment status
+              <select name="tiaStatus" defaultValue="not_started" style={{ display: "block", width: "100%" }}>
+                {TIA_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {TIA_STATUS_LABELS[s]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Notes
+              <textarea name="notes" rows={2} style={{ display: "block", width: "100%" }} />
+            </label>
+            <div>
+              <Button type="submit" variant="primary">
+                Log transfer
+              </Button>
+            </div>
+          </form>
 
-        {activities.length === 0 && (
-          <p style={{ fontSize: 13, color: "#666", marginTop: 8 }}>
-            No processing activities yet — <Link href="/ropa">add one</Link> to link transfers to
-            it (optional, but recommended).
-          </p>
-        )}
-      </main>
+          {activities.length === 0 && (
+            <p style={{ fontSize: 13, color: "var(--pq-ink-muted)", marginTop: 10 }}>
+              No processing activities yet — <Link href="/ropa">add one</Link> to link transfers to
+              it (optional, but recommended).
+            </p>
+          )}
+        </Card>
+      </div>
     </AppShell>
   );
 }

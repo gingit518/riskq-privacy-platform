@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth/session";
 import AppShell from "@/components/AppShell";
+import Card from "@/components/Card";
+import Button from "@/components/Button";
 import { listTrackingTechnologies, listConsentRequiredRegulationsInScope } from "@/lib/tracking/tracking";
 import {
   TRACKING_CATEGORIES,
@@ -14,6 +16,9 @@ import {
   reactivateTrackingTechnologyAction,
 } from "./actions";
 
+/** Tracking Technologies, reskinned Batch 7 (PRD §5.12) alongside RoPA and
+ * Transfers — direct token application, no dedicated mockup. Data
+ * queries/actions unchanged. */
 export default async function TrackingPage() {
   const session = await requireSession();
   if (!session) redirect("/login");
@@ -25,15 +30,20 @@ export default async function TrackingPage() {
 
   return (
     <AppShell>
-      <main style={{ maxWidth: 900, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
-        <h1>Tracking technologies</h1>
-        <p style={{ color: "#666", fontSize: 14 }}>
+      <div style={{ padding: "24px 28px", maxWidth: 980 }}>
+        <h1 style={{ marginTop: 0 }}>Tracking technologies</h1>
+        <p style={{ color: "var(--pq-ink-muted)", fontSize: 14 }}>
           Manual registry of cookies, tags, SDKs, and pixels — nothing here scans your site
           automatically; live scanning and consent enforcement (CMP) is a separate, larger build
           not yet started (PRD §5.9).
         </p>
 
-        <div style={{ padding: 8, background: consentRegs.length > 0 ? "#fff7ed" : "#f5f5f5", marginBottom: 16 }}>
+        <Card
+          style={{
+            marginBottom: 20,
+            background: consentRegs.length > 0 ? "var(--pq-warning-bg)" : "var(--pq-surface)",
+          }}
+        >
           {consentRegs.length > 0 ? (
             <>
               <strong>{consentRegs.length}</strong> regulation{consentRegs.length === 1 ? "" : "s"} in
@@ -49,84 +59,95 @@ export default async function TrackingPage() {
               <a href="/profile">Profile</a>).
             </>
           )}
-        </div>
+        </Card>
 
-        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 32 }}>
-          <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
-              <th style={{ padding: 4 }}>Name</th>
-              <th style={{ padding: 4 }}>Category</th>
-              <th style={{ padding: 4 }}>Party</th>
-              <th style={{ padding: 4 }}>Retention</th>
-              <th style={{ padding: 4 }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {technologies.map((t) => (
-              <tr key={t.id} style={{ borderBottom: "1px solid #eee", opacity: t.active ? 1 : 0.5 }}>
-                <td style={{ padding: 4 }}>
-                  <strong>{t.name}</strong>
-                  {!t.active && <span style={{ fontSize: 12, color: "#666" }}> (retired)</span>}
-                  <div style={{ fontSize: 12, color: "#666" }}>{t.purpose}</div>
-                </td>
-                <td style={{ padding: 4, fontSize: 13 }}>{TRACKING_CATEGORY_LABELS[t.category]}</td>
-                <td style={{ padding: 4, fontSize: 13 }}>{TRACKING_PARTY_LABELS[t.party]}</td>
-                <td style={{ padding: 4, fontSize: 13 }}>{t.retention || "—"}</td>
-                <td style={{ padding: 4 }}>
-                  <form action={t.active ? deactivateTrackingTechnologyAction : reactivateTrackingTechnologyAction}>
-                    <input type="hidden" name="id" value={t.id} />
-                    <button type="submit">{t.active ? "Retire" : "Reactivate"}</button>
-                  </form>
-                </td>
+        <Card style={{ marginBottom: 24, padding: 0, overflow: "hidden" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+            <thead>
+              <tr style={{ textAlign: "left", color: "var(--pq-ink-muted)" }}>
+                <th style={{ padding: "10px 16px", fontWeight: 500 }}>Name</th>
+                <th style={{ padding: "10px 16px", fontWeight: 500 }}>Category</th>
+                <th style={{ padding: "10px 16px", fontWeight: 500 }}>Party</th>
+                <th style={{ padding: "10px 16px", fontWeight: 500 }}>Retention</th>
+                <th style={{ padding: "10px 16px", fontWeight: 500 }}></th>
               </tr>
-            ))}
-            {technologies.length === 0 && (
-              <tr>
-                <td colSpan={5} style={{ padding: 8, color: "#666" }}>
-                  Nothing registered yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {technologies.map((t) => (
+                <tr key={t.id} style={{ borderTop: "1px solid var(--pq-line)", opacity: t.active ? 1 : 0.5 }}>
+                  <td style={{ padding: "10px 16px" }}>
+                    <strong>{t.name}</strong>
+                    {!t.active && (
+                      <span style={{ fontSize: 12, color: "var(--pq-ink-muted)" }}> (retired)</span>
+                    )}
+                    <div style={{ fontSize: 12, color: "var(--pq-ink-muted)" }}>{t.purpose}</div>
+                  </td>
+                  <td style={{ padding: "10px 16px" }}>{TRACKING_CATEGORY_LABELS[t.category]}</td>
+                  <td style={{ padding: "10px 16px" }}>{TRACKING_PARTY_LABELS[t.party]}</td>
+                  <td style={{ padding: "10px 16px" }}>{t.retention || "—"}</td>
+                  <td style={{ padding: "10px 16px" }}>
+                    <form action={t.active ? deactivateTrackingTechnologyAction : reactivateTrackingTechnologyAction}>
+                      <input type="hidden" name="id" value={t.id} />
+                      <Button type="submit" variant="secondary">
+                        {t.active ? "Retire" : "Reactivate"}
+                      </Button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+              {technologies.length === 0 && (
+                <tr>
+                  <td colSpan={5} style={{ padding: 16, color: "var(--pq-ink-muted)" }}>
+                    Nothing registered yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </Card>
 
-        <h2>Add a tracking technology</h2>
-        <form action={addTrackingTechnologyAction} style={{ display: "grid", gap: 8, maxWidth: 480 }}>
-          <label>
-            Name
-            <input name="name" required placeholder="e.g. Google Analytics" style={{ display: "block", width: "100%" }} />
-          </label>
-          <label>
-            Purpose
-            <input name="purpose" style={{ display: "block", width: "100%" }} />
-          </label>
-          <label>
-            Category
-            <select name="category" defaultValue="other" style={{ display: "block", width: "100%" }}>
-              {TRACKING_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {TRACKING_CATEGORY_LABELS[c]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Party
-            <select name="party" defaultValue="third_party" style={{ display: "block", width: "100%" }}>
-              {TRACKING_PARTIES.map((p) => (
-                <option key={p} value={p}>
-                  {TRACKING_PARTY_LABELS[p]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Retention
-            <input name="retention" placeholder="e.g. 2 years" style={{ display: "block", width: "100%" }} />
-          </label>
-          <button type="submit">Add</button>
-        </form>
-      </main>
+        <Card title="Add a tracking technology">
+          <form action={addTrackingTechnologyAction} style={{ display: "grid", gap: 10, maxWidth: 480 }}>
+            <label>
+              Name
+              <input name="name" required placeholder="e.g. Google Analytics" style={{ display: "block", width: "100%" }} />
+            </label>
+            <label>
+              Purpose
+              <input name="purpose" style={{ display: "block", width: "100%" }} />
+            </label>
+            <label>
+              Category
+              <select name="category" defaultValue="other" style={{ display: "block", width: "100%" }}>
+                {TRACKING_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {TRACKING_CATEGORY_LABELS[c]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Party
+              <select name="party" defaultValue="third_party" style={{ display: "block", width: "100%" }}>
+                {TRACKING_PARTIES.map((p) => (
+                  <option key={p} value={p}>
+                    {TRACKING_PARTY_LABELS[p]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Retention
+              <input name="retention" placeholder="e.g. 2 years" style={{ display: "block", width: "100%" }} />
+            </label>
+            <div>
+              <Button type="submit" variant="primary">
+                Add
+              </Button>
+            </div>
+          </form>
+        </Card>
+      </div>
     </AppShell>
   );
 }

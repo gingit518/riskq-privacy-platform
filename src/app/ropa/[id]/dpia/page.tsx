@@ -2,6 +2,8 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { requireSession } from "@/lib/auth/session";
 import AppShell from "@/components/AppShell";
+import Card from "@/components/Card";
+import Button from "@/components/Button";
 import { getActivity } from "@/lib/assessments/ropa";
 import { getDpiaForActivity } from "@/lib/assessments/dpia";
 import { DPIA_QUESTIONS, DPIA_SECTIONS } from "@/lib/assessments/dpia-questions";
@@ -27,82 +29,98 @@ export default async function DpiaPage({ params }: { params: { id: string } }) {
 
   return (
     <AppShell>
-      <main style={{ maxWidth: 800, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
+      <div style={{ padding: "24px 28px", maxWidth: 800 }}>
         <p>
           <Link href={`/ropa/${activity.id}`}>&larr; {activity.name}</Link>
         </p>
-        <h1>DPIA — {activity.name}</h1>
-        <p style={{ fontSize: 13, color: "#666", padding: 8, background: "#f5f5f5" }}>
-          Generic GDPR Art. 35-style question set — a reasonable starting template, <strong>not
-          legally reviewed</strong>. Adapt or supplement before relying on it for a regulator-facing
-          assessment (PRD §9).
-        </p>
+        <h1 style={{ marginTop: 0 }}>DPIA — {activity.name}</h1>
+        <Card style={{ marginBottom: 16 }}>
+          <p style={{ fontSize: 13, color: "var(--pq-ink-muted)", margin: 0 }}>
+            Generic GDPR Art. 35-style question set — a reasonable starting template,{" "}
+            <strong>not legally reviewed</strong>. Adapt or supplement before relying on it for a
+            regulator-facing assessment (PRD §9).
+          </p>
+        </Card>
 
         {isCompleted && (
-          <div style={{ padding: 8, background: "#ecfdf5", marginBottom: 16 }}>
-            Completed{dpia!.riskRating ? ` — risk rating: ${DPIA_RISK_RATING_LABELS[dpia!.riskRating]}` : ""}
-            . Answers below are read-only until reopened.
+          <Card style={{ marginBottom: 16, background: "var(--pq-success-bg)" }}>
+            <p style={{ margin: 0 }}>
+              Completed{dpia!.riskRating ? ` — risk rating: ${DPIA_RISK_RATING_LABELS[dpia!.riskRating]}` : ""}
+              . Answers below are read-only until reopened.
+            </p>
             <form action={reopenDpiaAction} style={{ marginTop: 8 }}>
               <input type="hidden" name="activityId" value={activity.id} />
-              <button type="submit">Reopen for editing</button>
+              <Button type="submit" variant="secondary">
+                Reopen for editing
+              </Button>
             </form>
-          </div>
+          </Card>
         )}
 
         <form action={saveDpiaAnswersAction}>
           <input type="hidden" name="activityId" value={activity.id} />
           {DPIA_SECTIONS.map((section) => (
-            <fieldset key={section} disabled={isCompleted} style={{ marginBottom: 16, border: "1px solid #ddd", padding: 12 }}>
-              <legend style={{ fontWeight: 600 }}>{section}</legend>
-              {DPIA_QUESTIONS.filter((q) => q.section === section).map((q) => (
-                <div key={q.id} style={{ marginBottom: 12 }}>
-                  <label style={{ display: "block", fontSize: 14, marginBottom: 2 }}>{q.question}</label>
-                  {q.helpText && (
-                    <div style={{ fontSize: 12, color: "#666", marginBottom: 2 }}>{q.helpText}</div>
-                  )}
-                  <textarea
-                    name={q.id}
-                    rows={2}
-                    defaultValue={answers[q.id] ?? ""}
-                    style={{ display: "block", width: "100%" }}
-                  />
-                </div>
-              ))}
-            </fieldset>
+            <Card key={section} title={section} style={{ marginBottom: 14 }}>
+              <fieldset disabled={isCompleted} style={{ border: "none", padding: 0, margin: 0 }}>
+                {DPIA_QUESTIONS.filter((q) => q.section === section).map((q) => (
+                  <div key={q.id} style={{ marginBottom: 12 }}>
+                    <label style={{ display: "block", fontSize: 14, marginBottom: 2 }}>{q.question}</label>
+                    {q.helpText && (
+                      <div style={{ fontSize: 12, color: "var(--pq-ink-muted)", marginBottom: 2 }}>
+                        {q.helpText}
+                      </div>
+                    )}
+                    <textarea
+                      name={q.id}
+                      rows={2}
+                      defaultValue={answers[q.id] ?? ""}
+                      style={{ display: "block", width: "100%" }}
+                    />
+                  </div>
+                ))}
+              </fieldset>
+            </Card>
           ))}
-          {!isCompleted && <button type="submit">Save answers</button>}
+          {!isCompleted && (
+            <Button type="submit" variant="primary">
+              Save answers
+            </Button>
+          )}
         </form>
 
         {!isCompleted && (
-          <form action={completeDpiaAction} style={{ marginTop: 24, padding: 12, border: "1px solid #ddd" }}>
-            <input type="hidden" name="activityId" value={activity.id} />
-            <h2 style={{ marginTop: 0 }}>Complete this DPIA</h2>
-            <label style={{ display: "block", marginBottom: 8 }}>
-              Overall risk rating
-              <select name="riskRating" defaultValue={dpia!.riskRating ?? "low"} style={{ display: "block" }}>
-                {DPIA_RISK_RATINGS.map((r) => (
-                  <option key={r} value={r}>
-                    {DPIA_RISK_RATING_LABELS[r]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label style={{ display: "block", marginBottom: 8 }}>
-              Mitigations / residual risk summary
-              <textarea
-                name="mitigations"
-                rows={3}
-                defaultValue={dpia!.mitigations ?? ""}
-                style={{ display: "block", width: "100%" }}
-              />
-            </label>
-            <button type="submit">Mark completed</button>
-            <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-              Also saves whatever answers are currently in the form above.
-            </div>
-          </form>
+          <Card title="Complete this DPIA" style={{ marginTop: 20 }}>
+            <form action={completeDpiaAction}>
+              <input type="hidden" name="activityId" value={activity.id} />
+              <label style={{ display: "block", marginBottom: 8 }}>
+                Overall risk rating
+                <select name="riskRating" defaultValue={dpia!.riskRating ?? "low"} style={{ display: "block" }}>
+                  {DPIA_RISK_RATINGS.map((r) => (
+                    <option key={r} value={r}>
+                      {DPIA_RISK_RATING_LABELS[r]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: "block", marginBottom: 8 }}>
+                Mitigations / residual risk summary
+                <textarea
+                  name="mitigations"
+                  rows={3}
+                  defaultValue={dpia!.mitigations ?? ""}
+                  style={{ display: "block", width: "100%" }}
+                />
+              </label>
+              <Button type="submit" variant="primary">
+                Mark completed
+              </Button>
+              <div style={{ fontSize: 12, color: "var(--pq-ink-muted)", marginTop: 6 }}>
+                Also saves whatever answers are currently in the form above.
+              </div>
+            </form>
+          </Card>
         )}
-      </main>
+      </div>
     </AppShell>
   );
 }

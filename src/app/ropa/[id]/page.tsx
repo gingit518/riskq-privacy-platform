@@ -2,6 +2,9 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { requireSession } from "@/lib/auth/session";
 import AppShell from "@/components/AppShell";
+import Card from "@/components/Card";
+import Badge from "@/components/Badge";
+import Button from "@/components/Button";
 import { getActivity, listActivitySystems, needsDpiaReview } from "@/lib/assessments/ropa";
 import { getDpiaForActivity } from "@/lib/assessments/dpia";
 import { listTransfersForActivity } from "@/lib/assessments/transfers";
@@ -27,54 +30,61 @@ export default async function ActivityDetailPage({ params }: { params: { id: str
 
   return (
     <AppShell>
-      <main style={{ maxWidth: 800, margin: "40px auto", fontFamily: "system-ui", padding: "0 16px" }}>
+      <div style={{ padding: "24px 28px", maxWidth: 800 }}>
         <p>
           <Link href="/ropa">&larr; All processing activities</Link>
         </p>
-        <h1>{activity.name}</h1>
+        <h1 style={{ marginTop: 0 }}>{activity.name}</h1>
 
-        <table style={{ width: "100%", marginBottom: 24, fontSize: 14 }}>
-          <tbody>
-            <tr>
-              <td style={{ padding: 4, color: "#666", width: 160 }}>Purpose</td>
-              <td style={{ padding: 4 }}>{activity.purpose || "—"}</td>
-            </tr>
-            <tr>
-              <td style={{ padding: 4, color: "#666" }}>Data categories</td>
-              <td style={{ padding: 4 }}>{(activity.dataCategories as string[]).join(", ") || "—"}</td>
-            </tr>
-            <tr>
-              <td style={{ padding: 4, color: "#666" }}>Data subjects</td>
-              <td style={{ padding: 4 }}>{activity.dataSubjects || "—"}</td>
-            </tr>
-            <tr>
-              <td style={{ padding: 4, color: "#666" }}>Lawful basis</td>
-              <td style={{ padding: 4 }}>{activity.lawfulBasis || "—"}</td>
-            </tr>
-            <tr>
-              <td style={{ padding: 4, color: "#666" }}>Retention period</td>
-              <td style={{ padding: 4 }}>{activity.retentionPeriod || "—"}</td>
-            </tr>
-            <tr>
-              <td style={{ padding: 4, color: "#666" }}>Risk flags</td>
-              <td style={{ padding: 4 }}>
-                {[
-                  activity.specialCategoryData && "Special-category data",
-                  activity.largeScaleProcessing && "Large-scale processing",
-                  activity.automatedDecisionMaking && "Automated decision-making",
-                ]
-                  .filter(Boolean)
-                  .join(", ") || "None"}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <Card style={{ marginBottom: 20 }}>
+          <table style={{ width: "100%", fontSize: 14 }}>
+            <tbody>
+              <tr>
+                <td style={{ padding: 4, color: "var(--pq-ink-muted)", width: 160 }}>Purpose</td>
+                <td style={{ padding: 4 }}>{activity.purpose || "—"}</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 4, color: "var(--pq-ink-muted)" }}>Data categories</td>
+                <td style={{ padding: 4 }}>{(activity.dataCategories as string[]).join(", ") || "—"}</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 4, color: "var(--pq-ink-muted)" }}>Data subjects</td>
+                <td style={{ padding: 4 }}>{activity.dataSubjects || "—"}</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 4, color: "var(--pq-ink-muted)" }}>Lawful basis</td>
+                <td style={{ padding: 4 }}>{activity.lawfulBasis || "—"}</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 4, color: "var(--pq-ink-muted)" }}>Retention period</td>
+                <td style={{ padding: 4 }}>{activity.retentionPeriod || "—"}</td>
+              </tr>
+              <tr>
+                <td style={{ padding: 4, color: "var(--pq-ink-muted)" }}>Risk flags</td>
+                <td style={{ padding: 4 }}>
+                  {[
+                    activity.specialCategoryData && "Special-category data",
+                    activity.largeScaleProcessing && "Large-scale processing",
+                    activity.automatedDecisionMaking && "Automated decision-making",
+                  ]
+                    .filter(Boolean)
+                    .join(", ") || "None"}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </Card>
 
-        <section style={{ marginBottom: 24, padding: 12, background: flagged ? "#fff7ed" : "#f5f5f5" }}>
-          <h2 style={{ marginTop: 0 }}>DPIA</h2>
+        <Card
+          title="DPIA"
+          style={{ marginBottom: 20, background: flagged && !dpia ? "var(--pq-warning-bg)" : undefined }}
+        >
           {dpia ? (
-            <p>
-              Status: <strong>{dpia.status === "completed" ? "Completed" : "Draft"}</strong>
+            <p style={{ margin: 0 }}>
+              Status:{" "}
+              <Badge variant={dpia.status === "completed" ? "success" : "warning"}>
+                {dpia.status === "completed" ? "Completed" : "Draft"}
+              </Badge>
               {dpia.riskRating && ` — risk rating: ${dpia.riskRating}`}
               <br />
               <Link href={`/ropa/${activity.id}/dpia`}>Open DPIA →</Link>
@@ -88,15 +98,16 @@ export default async function ActivityDetailPage({ params }: { params: { id: str
               </p>
               <form action={startDpiaAction}>
                 <input type="hidden" name="activityId" value={activity.id} />
-                <button type="submit">Start DPIA</button>
+                <Button type="submit" variant="primary">
+                  Start DPIA
+                </Button>
               </form>
             </>
           )}
-        </section>
+        </Card>
 
-        <section style={{ marginBottom: 24 }}>
-          <h2>Systems involved</h2>
-          <p style={{ fontSize: 13, color: "#666" }}>
+        <Card title="Systems involved" style={{ marginBottom: 20 }}>
+          <p style={{ fontSize: 13, color: "var(--pq-ink-muted)" }}>
             Reflects the live <Link href="/dsar/systems">Systems Register</Link> — unlike a DSAR
             request&apos;s task list, this is NOT a snapshot, so retiring/renaming a system there
             updates what shows here immediately.
@@ -111,35 +122,36 @@ export default async function ActivityDetailPage({ params }: { params: { id: str
               </label>
             ))}
             {allSystems.length === 0 && (
-              <p style={{ fontSize: 13, color: "#666" }}>No systems registered yet.</p>
+              <p style={{ fontSize: 13, color: "var(--pq-ink-muted)" }}>No systems registered yet.</p>
             )}
-            <button type="submit" style={{ marginTop: 8 }}>
+            <Button type="submit" variant="secondary" style={{ marginTop: 8 }}>
               Save systems
-            </button>
+            </Button>
           </form>
-        </section>
+        </Card>
 
-        <section>
-          <h2>International transfers</h2>
+        <Card title="International transfers">
           {transfers.length > 0 ? (
-            <ul style={{ paddingLeft: 16 }}>
+            <ul style={{ paddingLeft: 16, margin: 0 }}>
               {transfers.map((t) => (
                 <li key={t.id} style={{ fontSize: 14 }}>
                   {t.fromJurisdiction} → {t.toJurisdiction} — mechanism: {t.mechanism}
                   {t.mechanism === "none" && (
-                    <span style={{ color: "#b91c1c" }}> (no mechanism in place)</span>
+                    <span style={{ marginLeft: 6 }}>
+                      <Badge variant="danger">No mechanism</Badge>
+                    </span>
                   )}
                 </li>
               ))}
             </ul>
           ) : (
-            <p style={{ fontSize: 13, color: "#666" }}>
+            <p style={{ fontSize: 13, color: "var(--pq-ink-muted)", margin: 0 }}>
               No transfers logged against this activity yet. Log one from the{" "}
               <Link href="/transfers">International Transfers</Link> registry.
             </p>
           )}
-        </section>
-      </main>
+        </Card>
+      </div>
     </AppShell>
   );
 }
